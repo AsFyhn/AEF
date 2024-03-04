@@ -60,6 +60,23 @@ sharpe_ratio = (mu - 0) / np.diag(sigma)
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 print(f'Highest Sharpe ratio of {sharpe_ratio.max():.2f} is {sr_high}')
 
+def calc_return_std(weights, mu, sigma_matrix, factor):
+  """
+  Calculate the expected return and standard deviation of a portfolio.
+
+  Parameters:
+  weights (numpy.ndarray): The weights of the assets in the portfolio.
+  mu (numpy.ndarray): The expected returns of the assets.
+  sigma_matrix (numpy.ndarray): The covariance matrix of the assets.
+  factor (float): A scaling factor.
+
+  Returns:
+  tuple: A tuple containing the expected return and standard deviation of the portfolio.
+  """
+  return_vec = mu.T @ weights * factor 
+  vol = np.sqrt(weights.T @ sigma_matrix @ weights) * np.sqrt(factor)
+  return return_vec, vol
+
 def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
     """
     The function performs each of the following steps:
@@ -78,6 +95,12 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
         df: with column c which is the weight of the minimum variance portfolio and N corresponding columns with the weights 
           of each asset
     """
+    class results: pass
+    results.inputs = {}
+    results.inputs['mu'] = mu_est
+    results.inputs['sigma'] = sigma_est
+    results.inputs['yearly_factor'] = yearly_factor
+
     N = mu_est.shape[0]
     if sigma_est.shape[0] != N: 
         raise ValueError('The size length of vector mu_est should be the same as for sigma_est')
@@ -87,10 +110,9 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     #----- minimum variance portfolio
     mvp_weights = sigma_inv @ iota
     mvp_weights = mvp_weights/mvp_weights.sum()
-    print(mvp_weights)
-    mvp_return = mu.T @ mvp_weights * yearly_factor
-    mvp_volatility = np.sqrt(mvp_weights.T @ sigma_est @ mvp_weights) * np.sqrt(yearly_factor)
+    mvp_return,mvp_volatility =  calc_return_std(mvp_weights,mu,sigma_est,yearly_factor)
     print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
+    results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
 
     #----- efficient frontier portfolio
     mu_bar = mvp_return*2
@@ -99,10 +121,9 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     E = mu_est.T @ sigma_inv @ mu_est
     lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
     efp_weights = mvp_weights + lambda_tilde/2 * (sigma_inv@mu_est - D* mvp_weights ) 
-    print(efp_weights)
-    efp_return = mu_est.T @ efp_weights 
-    efp_vol = np.sqrt(efp_weights.T @ sigma_est @ efp_weights)*np.sqrt(12)
+    efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
     print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
+    results.efp_weights = efp_weights # store efficient frontier portfolio weights in object
 
     #----- mutual fund theorem
     a = np.linspace(-0.2, 1.2, 121)
@@ -113,13 +134,51 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
           res.loc[i, f"w_{j+1}"] = w[j]  # Assign each element of w to a named column
         res.loc[i, "mu"] = (w.T @ mu)*yearly_factor
         res.loc[i, "sd"] = np.sqrt(w.T @ sigma @ w)*np.sqrt(yearly_factor)
+    
+    results.res = res   # store dataframe in object 
 
-    return res
+    return results
 
-results = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
+cef = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
+
+efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+mvpRet, mvpVol = calc_return_std(weights=cef.mvp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+
+#---- tangency portfolio
+# ¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
+#       connsider if there is a better way
+# ????????????????????????????????????????????????
+d = np.vstack((cef.inputs['sigma'],np.ones(27)))
+c = np.append(cef.inputs['mu'],0)
+e = np.hstack((d,c.reshape(c.shape[0],1)))
+q = np.append(np.zeros(cef.inputs['mu'].shape[0]),1)
+tan_weights = np.linalg.inv(e) @ q
+tan_weights = tan_weights[:-1]
+tanRet, tanVol = calc_return_std(weights=tan_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+# sharpe-ratio
+sharpeRatio = tanRet/tanVol
+
+vol = np.linspace(0,tanVol,101)
+x = np.linspace(0,1,101)
+ret = np.nan + np.zeros(vol.shape[0])
+for i, v in enumerate(x):
+   ret[i] = tanRet * v
+tanLine = pd.DataFrame((vol,ret),index=['vol','ret']).T
+
 res_figure = (
-  ggplot(results, aes(x="sd", y="mu")) +
+  ggplot(cef.res, aes(x="sd", y="mu")) +
   geom_point() + 
+  geom_line(tanLine, aes(x='vol',y='ret'))+
+  geom_point(
+    pd.DataFrame({"mu": [mvpRet, efpRet,tanRet],"sd":[mvpVol, efpVol,tanVol]}),
+    size=4, 
+    color='darkblue',
+    ) +
+  geom_point(
+    pd.DataFrame({"mu": cef.inputs['mu']*12,
+                  "sd": np.sqrt(np.diag(cef.inputs['sigma'])) * np.sqrt(12)
+                  })
+  ) +
   labs(x="Annualized standard deviation",
        y="Annualized expected return",
        title="Efficient frontier for DOW index constituents") +
