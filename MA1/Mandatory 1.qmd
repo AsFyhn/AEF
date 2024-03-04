@@ -33,8 +33,7 @@ import yfinance as yf
 
 ticker = ["AAPL", "MSFT", "BA"]
 prices = (yf.download(tickers=ticker,
-                            start="2000-01-01",
-                            end="2022-12-31",
+                            period='2y',
                             progress=False)
   .melt(ignore_index=False,
         var_name=["variable", "symbol"])
@@ -95,7 +94,7 @@ sharpe_ratio = pd.DataFrame({"ticker": ticker,
   "Sharpe": np.sqrt(250) * mu / np.sqrt(np.diag(sigma))})
 ```
 
-**Answer: ** The asset with the highest annualized Sharpe-ratio (computed as $\sqrt{250}\frac{\hat\mu_i}{\hat\sigma_i}$, where $\hat\mu_i$ is the sample mean of asset $i$s dailies returns and $\hat\sigma_i$is the standard deviation of asset $i$s dailys returns) is `{python} sharpe_ratio['ticker'][sharpe_ratio['Sharpe'].idxmax()]` with an annualized Sharpe-ratio of `{python} round(sharpe_ratio['Sharpe'].max(), 3)`. A table with all Sharpe ratios can be found below. 
+**Answer: ** The asset with the highest annualized Sharpe-ratio (computed as $\sqrt{250}\frac{\hat\mu_i}{\hat\sigma_i}$, where $\hat\mu_i$ is the sample mean of asset $i$s dailies returns and $\hat\sigma_i$is the standard deviation of asset $i$s dailys returns) is `{python} sharpe_ratio['ticker'][sharpe_ratio['Sharpe'].idxmax()]` with an annualized Sharpe-ratio of `{python} round(sharpe_ratio['Sharpe'].max(), 3)`. A table with all Sharpe ratios can be found below. `{python} pd.__version__`
 ```{python}
 #| tbl-cap: "Historical annualized Sharpe-ratios"
 sharpe_ratio
@@ -104,6 +103,9 @@ sharpe_ratio
 ## How to generate a script to submit for peer feedback?
 
 This is easy. Once you are done with working on your quarto file, you simply run the line of code below (in a separate session, not as part of rendering the quarto file itself). Once executed you will see a new R-script which contains only the code.
+`{python} pd.__version__`
+
+
 ```{python}
 #| echo: true
 #| eval: false
