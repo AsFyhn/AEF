@@ -55,7 +55,7 @@ mu = np.array(df.groupby('ticker')[return_col].mean()).T
 sigma = np.array(df.pivot(index='date',columns='ticker',values=return_col).cov())
 
 # Calculate Sharpe ratio for each stock
-sharpe_ratio = (mu - 0) / np.diag(sigma)
+sharpe_ratio = (mu - 0) / np.sqrt(np.diag(sigma))
 
 # Print the Sharpe ratio
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
@@ -116,21 +116,21 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
 
     #----- efficient frontier portfolio
-    mu_bar = mvp_return*2
+    mu_bar = mvp_return/12*2
     C = iota.T @ sigma_inv @ iota
     D = iota.T @ sigma_inv @ mu_est
     E = mu_est.T @ sigma_inv @ mu_est
     lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
     efp_weights = mvp_weights + lambda_tilde/2 * (sigma_inv@mu_est - D* mvp_weights ) 
-    efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
+    # efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
     # print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
     results.efp_weights = efp_weights # store efficient frontier portfolio weights in object
 
     #----- mutual fund theorem
-    a = np.linspace(-0.2, 1.2, 121)
+    a = np.linspace(-0.2, 10, 200)
     res = pd.DataFrame(columns=["mu", "sd"], index=a).astype(float)
     for i in a:
-        w = i*mvp_weights+(1-i)*efp_weights
+        w = (1-i)*mvp_weights+i*efp_weights
         for j in range(len(w)):
           res.loc[i, f"w_{j+1}"] = w[j]  # Assign each element of w to a named column
         res.loc[i, "mu"] = (w.T @ mu)*yearly_factor
@@ -141,9 +141,9 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     return results
 
 cef = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
-
-efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
 mvpRet, mvpVol = calc_return_std(weights=cef.mvp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+
 
 #---- tangency portfolio
 # ¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
