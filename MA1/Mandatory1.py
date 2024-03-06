@@ -4,6 +4,7 @@ import yfinance as yf
 from datetime import datetime as dt
 from plotnine import *
 from mizani.formatters import percent_format
+from copy import deepcopy
 
 # define list of tickers
 tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
@@ -111,7 +112,7 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     mvp_weights = sigma_inv @ iota
     mvp_weights = mvp_weights/mvp_weights.sum()
     mvp_return,mvp_volatility =  calc_return_std(mvp_weights,mu,sigma_est,yearly_factor)
-    print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
+    # print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
     results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
 
     #----- efficient frontier portfolio
@@ -122,7 +123,7 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
     efp_weights = mvp_weights + lambda_tilde/2 * (sigma_inv@mu_est - D* mvp_weights ) 
     efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
-    print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
+    # print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
     results.efp_weights = efp_weights # store efficient frontier portfolio weights in object
 
     #----- mutual fund theorem
@@ -186,3 +187,89 @@ res_figure = (
   scale_y_continuous(labels=percent_format())
 )
 res_figure
+
+
+# simulating returns 
+def simulate_returns(periods=200,
+                     expected_returns=mu,
+                     covariance_matrix=sigma):
+    """
+        periods (int): Number of periods
+        expected_returns (array-like): Expected returns for each asset
+        covariance_matrix (array-like): Covariance matrix of returns
+    """
+    return np.random.multivariate_normal(
+       mean=expected_returns, 
+       cov=covariance_matrix, 
+       size=periods
+    )
+
+def calc_eff_tang_port(x):
+  d = np.vstack((x.inputs['sigma'],np.ones(27)))
+  c = np.append(x.inputs['mu'],0)
+  e = np.hstack((d,c.reshape(c.shape[0],1)))
+  q = np.append(np.zeros(x.inputs['mu'].shape[0]),1)
+  tan_weights = np.linalg.inv(e) @ q
+  tan_weights = tan_weights[:-1]
+  return tan_weights 
+
+
+simLength = 100
+simdraws = {i:{} for i in range(simLength)}
+np.random.seed(100)
+for i in range(simLength):
+  if i % 10==0: print(f'{i+1} out of {simLength}')
+  draw1 = pd.DataFrame(simulate_returns(periods=200,expected_returns=cef.inputs['mu'],covariance_matrix=cef.inputs['sigma']))
+  mu_sim_est = np.array(draw1.mean()).T
+  sigma_sim_est = np.array(draw1.cov())
+  eff = compute_efficient_frontier(mu_est=mu_sim_est,sigma_est=sigma_sim_est,yearly_factor=12)
+  sim_df = deepcopy(eff.res)
+  sim_df['sim_draw_no'] = i
+  tan_weights = calc_eff_tang_port(x=eff)
+  tanRet, tanVol = calc_return_std(weights=tan_weights,mu=eff.inputs['mu'],sigma_matrix=eff.inputs['sigma'],factor=eff.inputs['yearly_factor'])
+  simdraws[i] = {'Frontier':sim_df,
+                          'Tangency Weights': tan_weights,
+                          'Sharpe Ratio': tanRet/tanVol,
+                          'input':{'mu':mu_sim_est,
+                                   'sigma':sigma_sim_est,
+                                   'data':draw1}}
+
+sim_df = pd.concat([simdraws[i]['Frontier'] for i in range(simLength)])
+
+# plot of first simulatioj
+res_figure2 = (
+  ggplot(sim_df.loc[sim_df['sim_draw_no']==0], aes(x="sd", y="mu")) +
+  geom_point() + 
+  geom_point(cef.res, colour='red') + 
+  labs(x="Annualized standard deviation",
+       y="Annualized expected return",
+       title="Efficient frontier for DOW index constituents") +
+  scale_x_continuous(labels=percent_format()) +
+  scale_y_continuous(labels=percent_format())
+)
+res_figure2
+
+
+# plot of all 100 simulations
+res_figure3 = (
+    ggplot(sim_df, aes(x="sd", y="mu",group='sim_draw_no')) +
+    geom_point(alpha=0.05)  # Plot first element with label
+    +geom_point(cef.res.assign(sim_draw_no = -1),alpha=1,colour='black')
+)
+res_figure3
+
+# plot histogram of sharpe ratios
+(
+    ggplot(pd.DataFrame([simdraws[i]['Sharpe Ratio'] for i in range(simLength)],columns=['Sharpe Ratio'])) + 
+    aes(x = 'Sharpe Ratio') +
+    geom_histogram(binwidth=0.1)
+)
+
+# check for the outliers 
+for i in range(simLength):
+  s, d = calc_return_std(weights=simdraws[i]['Tangency Weights'], sigma_matrix=simdraws[i]['input']['sigma'],mu=simdraws[i]['input']['mu'],factor=12)
+  if s/d <= 0 : 
+     print(f'Negative value of {s/d} when i={i}')
+
+no_min = np.array([simdraws[i]['Sharpe Ratio'] for i in range(simLength)]).argmin()
+simdraws[no_min]['input']['data'].mean()/np.array(simdraws[no_min]['input']['data'].cov())
