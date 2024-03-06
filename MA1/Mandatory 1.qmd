@@ -19,95 +19,174 @@ format:
 bibliography: references.bib
 ---
 
-## Quarto - a framework for reproducible research
+In the following we complete the exercises for mandatory assignment 1.
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>. When you click the **Render** button a document will be generated that includes both content and the output of embedded code. The template below can be used to submit your answers for the mandatory assignment. Within the template you find all typical issues. By default, code is omitted in the output (can be changed with `echo: true` in line 6). Formatting is done using markdown (e.g., check out how to use \# to define sections and subsections or how to generate bold text). Footnotes and citations are easy. You can also include math notation using LaTeX style. The template contains inline code execution (e.g. to automatically return the ticker of the asset with the highest Sharpe ratio) and shows how to embed figures into the document. HER ER DER EN ÆNDRING
+**Exercise 1. Compute monthly returns for each of the tickers.**
 
-## Exercise
+We have solved this exercise.
 
-1. Download daily adjusted prices for all constituents of three stocks: AAPL, MSFT, and BA for the period from January 1st, 2000 until December 31st, 2022 from Yahoo!Finance. Explicitly include the code you use to download the data into your report. Compute the daily returns for each of the tickers.
-```{python} 
-import pandas as pd
+```{python include: false} 
+import pandas as pd 
 import numpy as np
 import yfinance as yf
-
-ticker = ["AAPL", "MSFT", "BA"]
-prices = (yf.download(tickers=ticker,
-                            period='2y',
-                            progress=False)
-  .melt(ignore_index=False,
-        var_name=["variable", "symbol"])
-  .reset_index()
-  .pivot(index=["Date", "symbol"],
-         columns="variable",
-         values="value")
-  .get("Adj Close")
-  .reset_index()
-  .rename(columns = {"Date": "date",
-                     "Adj Close": "adjusted"})
-)
-
-returns = (prices
-  .assign(ret = lambda x: x.groupby("symbol")["adjusted"].pct_change())
-  .get(["symbol", "date", "ret"])
-  .dropna(subset="ret")
-)
-```
-
-1. Visualize the distribution of the daily returns.
-
-```{python}
-#| fig-cap: "Distribution of daily stock returns."
+from datetime import datetime as dt
 from plotnine import *
 from mizani.formatters import percent_format
 
-returns_figure = (
-  ggplot(returns, aes(x="ret", fill="symbol")) +
-  geom_histogram(bins=100) +
-  labs(x="", y="",
-       title="Distribution of daily stock returns",
-       fill ="") +
-  facet_wrap("symbol") +
-  scale_x_continuous(labels=percent_format())
+# define list of tickers
+tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
+               'V', 'AMGN', 'TRV', 'AXP', 'BA', 'HON', 'JPM',
+                 'IBM', 'AAPL', 'AMZN', 'JNJ', 'PG', 'CVX',
+                   'MRK', 'DIS', 'NKE', 'MMM', 'KO', 'WMT', 
+                   'DOW', 'CSCO', 'INTC', 'VZ']
+
+# inputdf = yf.download(tickers=tickerlist,period='25y')  
+# inputdf.to_pickle(r'/Users/asbjornfyhn/Desktop/Emp Fin/AEF/MA1/DJ_comp.pkl')
+# load data
+import os
+#print(os.getcwd())
+inputdf = pd.read_pickle(r'DJ_comp.pkl')
+inputdf.get('Adj Close').stack().reset_index()
+# transform the dataset
+df = (inputdf
+      .get('Adj Close')
+      .stack()
+      .reset_index()
+      .rename(columns={'Date':'date','level_1':'ticker',0:'adj_close'})
+      .set_index('date')
+      .groupby('ticker')['adj_close']
+      .resample('m')
+      .last()
+      .reset_index()
+      .assign(date=lambda x: x['date'].dt.strftime('%Y-%m-%d'))  # Convert date to string
+      .query("date >= '2000-01-01'")  # Filter for dates >= 1999-04-01
+      .query("date <= '2023-12-31'")  # Filter for dates >= 1999-04-01
+      )
+
+# remove all tickers where there is no data for each month 
+df = (df
+  .groupby(["ticker"])
+  .apply(lambda x: x.assign(counts=x["adj_close"].dropna().count()))
+  .reset_index(drop=True)
+  .query("counts == counts.max()")
+  .drop(columns='counts')
+  .assign(ret=lambda x: x["adj_close"].pct_change())
+  .assign(log_return = lambda x: np.log(x['adj_close']/x['adj_close'].shift(1)) )
 )
-returns_figure.draw()
 
+# check that we have 27 tickers
+no_of_tickers = int(df['ticker'].unique().size)
+#print(f'The number of tickers in the dataset: { no_of_tickers}')
+
+#
+return_col = 'log_return'
+mu = np.array(df.groupby('ticker')[return_col].mean()).T
+sigma = np.array(df.pivot(index='date',columns='ticker',values=return_col).cov())
 ```
 
-1. Compute the sample mean $\mu$ and the variance-covariance matrix $\Sigma$ of the returns.
-Which of the individual assets delivered the highest Sharpe ratio (assume the risk-free rate is zero) during the sample period?^[Whenever reporting performance measures, compute annualized values and clearly state how you calculated the measure.]
-The estimated moments may later be used for the construction of optimal portfolios (@Markowitz1952; @Merton1972)
+**Exercise 2. Which of the 𝑁 individual assets delivered the highest Sharpe ratio?**
 
+To calculate the Sharpe ratio we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio is Apple (AAPL), which can also be seen from the output of our code:
 ```{python}
-returns_matrix = (prices
-  .pivot(columns="symbol", 
-         values="adjusted", 
-         index="date")
-  .pct_change()
-  .dropna()
-)
 
-mu = np.array(returns_matrix.mean()).T
-sigma = np.array(returns_matrix.cov())
+# Calculate Sharpe ratio for each stock
+sharpe_ratio = (mu - 0) / np.diag(sigma)
 
-sharpe_ratio = pd.DataFrame({"ticker": ticker,
-  "Sharpe": np.sqrt(250) * mu / np.sqrt(np.diag(sigma))})
+# Print the Sharpe ratio
+sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
+print(f'{sr_high} has the highest Sharpe ratio of {sharpe_ratio.max():.2f}')
+
+def calc_return_std(weights, mu, sigma_matrix, factor):
+  """
+  Calculate the expected return and standard deviation of a portfolio.
+
+  Parameters:
+  weights (numpy.ndarray): The weights of the assets in the portfolio.
+  mu (numpy.ndarray): The expected returns of the assets.
+  sigma_matrix (numpy.ndarray): The covariance matrix of the assets.
+  factor (float): A scaling factor.
+
+  Returns:
+  tuple: A tuple containing the expected return and standard deviation of the portfolio.
+  """
+  return_vec = mu.T @ weights * factor 
+  vol = np.sqrt(weights.T @ sigma_matrix @ weights) * np.sqrt(factor)
+  return return_vec, vol
 ```
 
-**Answer: ** The asset with the highest annualized Sharpe-ratio (computed as $\sqrt{250}\frac{\hat\mu_i}{\hat\sigma_i}$, where $\hat\mu_i$ is the sample mean of asset $i$s dailies returns and $\hat\sigma_i$is the standard deviation of asset $i$s dailys returns) is `{python} sharpe_ratio['ticker'][sharpe_ratio['Sharpe'].idxmax()]` with an annualized Sharpe-ratio of `{python} round(sharpe_ratio['Sharpe'].max(), 3)`. A table with all Sharpe ratios can be found below. `{python} pd.__version__`
-```{python}
-#| tbl-cap: "Historical annualized Sharpe-ratios"
-sharpe_ratio
-```
+**Exercise 3. Perform each of the following steps:**
 
-## How to generate a script to submit for peer feedback?
+***Compute the minimum variance portfolio weight**
 
-This is easy. Once you are done with working on your quarto file, you simply run the line of code below (in a separate session, not as part of rendering the quarto file itself). Once executed you will see a new R-script which contains only the code.
-`{python} pd.__version__`
-
+To compute the minimum variance portfolio we perform 
 
 ```{python}
-#| echo: true
-#| eval: false
-knitr::purl("MA_template.qmd")
+
+def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
+    """
+    The function performs each of the following steps:
+    1. Compute the minimum variance portfolio weight mvp_weights for the input Sigma_est. 
+        The function can handle positive definite variance-covariance matrices of arbitrary dimensions N x N.
+    2. Compute the eﬀicient portfolio weights efp_weights for the inputs Sigma_est and mu_est 
+      that delivers two times the expected return of the minimum variance portfolio weight.
+    3. Make use of the two-mutual fund theorem to characterize a range of portfolio weights on the eﬀicient frontier: 
+      Specifically, compute the weights of a sequence of portfolios which are combinations of the minimum variance portfolio weight
+        and the eﬀicient portfolio, c_weights = c * mvp_weights  + (1 - c) * efp_weights where c ∈ {-0.1, ... , 1.2}
+    
+      Args: 
+        mu_est (np.array): N x 1 return matrix
+        sigma_est (np.array): N x N variance-covariance matrix
+      Returns: 
+        df: with column c which is the weight of the minimum variance portfolio and N corresponding columns with the weights 
+          of each asset
+    """
+    class results: pass
+    results.inputs = {}
+    results.inputs['mu'] = mu_est
+    results.inputs['sigma'] = sigma_est
+    results.inputs['yearly_factor'] = yearly_factor
+
+    N = mu_est.shape[0]
+    if sigma_est.shape[0] != N: 
+        raise ValueError('The size length of vector mu_est should be the same as for sigma_est')
+    iota = np.ones(N)
+    sigma_inv = np.linalg.inv(sigma_est) 
+
+    #----- minimum variance portfolio
+    mvp_weights = sigma_inv @ iota
+    mvp_weights = mvp_weights/mvp_weights.sum()
+    mvp_return,mvp_volatility =  calc_return_std(mvp_weights,mu,sigma_est,yearly_factor)
+    print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
+    results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
+
+    #----- efficient frontier portfolio
+    mu_bar = mvp_return*2
+    C = iota.T @ sigma_inv @ iota
+    D = iota.T @ sigma_inv @ mu_est
+    E = mu_est.T @ sigma_inv @ mu_est
+    lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
+    efp_weights = mvp_weights + lambda_tilde/2 * (sigma_inv@mu_est - D* mvp_weights ) 
+    efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
+    print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
+    results.efp_weights = efp_weights # store efficient frontier portfolio weights in object
+
+    #----- mutual fund theorem
+    a = np.linspace(-0.2, 1.2, 121)
+    res = pd.DataFrame(columns=["mu", "sd"], index=a).astype(float)
+    for i in a:
+        w = i*mvp_weights+(1-i)*efp_weights
+        for j in range(len(w)):
+          res.loc[i, f"w_{j+1}"] = w[j]  # Assign each element of w to a named column
+        res.loc[i, "mu"] = (w.T @ mu)*yearly_factor
+        res.loc[i, "sd"] = np.sqrt(w.T @ sigma @ w)*np.sqrt(yearly_factor)
+    
+    results.res = res   # store dataframe in object 
+
+    return results
+cef = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
+
+efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+mvpRet, mvpVol = calc_return_std(weights=cef.mvp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+
+
 ```
