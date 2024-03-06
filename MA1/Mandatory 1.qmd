@@ -85,8 +85,6 @@ sigma = np.array(df.pivot(index='date',columns='ticker',values=return_col).cov()
 ```
 
 **Exercise 2. Which of the 𝑁 individual assets delivered the highest Sharpe ratio?**
-
-To calculate the Sharpe ratio we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio is Apple (AAPL), which can also be seen from the output of our code:
 ```{python}
 
 # Calculate Sharpe ratio for each stock
@@ -94,7 +92,7 @@ sharpe_ratio = (mu - 0) / np.diag(sigma)
 
 # Print the Sharpe ratio
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
-print(f'{sr_high} has the highest Sharpe ratio of {sharpe_ratio.max():.2f}')
+# print(f'{sr_high} has the highest Sharpe ratio of {sharpe_ratio.max():.2f}')
 
 def calc_return_std(weights, mu, sigma_matrix, factor):
   """
@@ -113,6 +111,8 @@ def calc_return_std(weights, mu, sigma_matrix, factor):
   vol = np.sqrt(weights.T @ sigma_matrix @ weights) * np.sqrt(factor)
   return return_vec, vol
 ```
+
+To calculate the Sharpe ratio we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio of `{python} sharpe_ratio.max().round(2)` is `{python} sr_high`.
 
 **Exercise 3. Perform each of the following steps:**
 
