@@ -42,8 +42,7 @@ return_col = 'log_return' # alternatively use 'ret' to get standard returns
 In the following we complete the exercises for mandatory assignment 1.
 
 
-**Exercise 1. Compute monthly returns for each of the tickers.**
-
+<!-- Exercise 1 -->
 ```{python}
 inputdf = yf.download(tickers=tickerlist,period='25y') 
 # inputdf = pd.read_pickle(r'DJ_comp.pkl')
@@ -88,6 +87,7 @@ sharpe_ratio = (mu - 0) / np.diag(sigma)
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 ```
 
+**Exercise 1**  <!-- The code for this exercise is found above -->  
 Based on the monthly return series calculated earlier, we create a vector of the average monthly returns $\mu$ for each series and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratio, we use the formula: $Sharpe=\frac{return-r_f}{standarddeviation}$. The stock with the highest Sharpe ratio is `{python} sr_high` with a ration of `{python} sharpe_ratio.max().round(2)`.
 
 ```{python}
@@ -109,7 +109,10 @@ def calc_return_std(weights, mu, sigma_matrix, factor):
   return return_vec, vol
 ```
 
-**Exercise 3. Perform each of the following steps:** First of we create a function compute_efficient_frontier which return an object with the inputs that consists of a vector of the estimated expected return, the estimated variance-covariance matrix and a factor that is used to annualised the return, minimum variance portfolio, efficient portfolio that delivers two times the expected return of the minimum variance portfolio and lastly the efficient frontier. *How are the different things calculated* \***Compute the minimum variance portfolio weight** To compute the minimum variance portfolio we perform
+**Exercise 2**  
+
+**Exercise 3**  
+First of we create a function compute_efficient_frontier which return an object with the inputs that consists of a vector of the estimated expected return, the estimated variance-covariance matrix and a factor that is used to annualised the return, minimum variance portfolio, efficient portfolio that delivers two times the expected return of the minimum variance portfolio and lastly the efficient frontier. *How are the different things calculated*
 
 ```{python}
 def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
@@ -239,15 +242,17 @@ res_figure = (
 res_figure
 ```
 
-**Exercise 4. Efficient tangency:** *What are the eﬀicient tangency portfolio weights 𝜔tgc under the assumption that the risk- free rate is zero based on the true parameters 𝜇 and Σ? Do the tangency portfolio weights seem like a well-balanced portfolio? What are the potential issues when implementing this portfolio in reality? What is the maximum attainable Sharpe ratio assuming the risk-free rate is zero? Should the Sharpe ratio of 𝜔tgc be higher or lower than the Sharpe ratio of the individual assets?*
-
+**Exercise 4**  
+VI MANGLER STADIG FØRSTE DEL AF DENNE OPGAVE
 Transaction costs and estimation dificulties are the potential issues when implementing the market portfolio in reality. To implement the market portfolio in reality, one would have to constantly update the portfolio weights. The stock prices are constantly changing and so is the optimal weight of the market portfolio. Transaction costs include expenses to the stock exchange and costs associated with frequent trading of low volume stocks that often have high bid-ask spreads. Furthermore, estimating the optimal portfolio weight of all stocks and updating that estimation frequently requires expensive data-acces. As such, it is often cheaper for an investor to buy an MSCI World ETF, which mimics the market portfolio.
 
 The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market line. On the capital market line, stocks have the highest possible expected return for a given volatility. As such, the Sharpe ratio of the market portfolio will be higher than individual assets.
 
-**Exercise 5. Explain the code:** Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
+**Exercise 5**  
+Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
 
-**Exercise 6 and 7. Simulation** This section explores the deviations between the theoretical efficient frontier and its estimates obtained through sample data. We achieve this by simulating multiple sample return series and constructing the corresponding efficient frontiers.
+**Exercise 6 and 7**  
+This section explores the deviations between the theoretical efficient frontier and its estimates obtained through sample data. We achieve this by simulating multiple sample return series and constructing the corresponding efficient frontiers.
 
 *Simulation Process*:
 
@@ -273,3 +278,8 @@ As the number of simulations increases (i.e., larger sample size), the simulated
 
 In conclusion, this simulation exercise underscores the importance of considering the limitations of sample-based estimates when constructing the efficient frontier. While the true frontier represents the optimal allocation for maximizing expected return for a given level of risk, practical implementation relies on estimates derived from available data. The presented results emphasize the uncertainty associated with these estimates and the potential deviations from the true efficient frontier.
 
+**Exercise 8**  
+
+**Exercise 9**  
+
+**Exercise 10**  
