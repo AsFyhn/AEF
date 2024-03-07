@@ -18,13 +18,6 @@ format:
     fontsize: 12pt
 bibliography: references.bib
 ---
-
-In the following we complete the exercises for mandatory assignment 1.
-
-**Exercise 1. Compute monthly returns for each of the tickers.**
-
-We have solved this exercise.
-
 ```{python include: false} 
 import pandas as pd 
 import numpy as np
@@ -39,14 +32,15 @@ tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                  'IBM', 'AAPL', 'AMZN', 'JNJ', 'PG', 'CVX',
                    'MRK', 'DIS', 'NKE', 'MMM', 'KO', 'WMT', 
                    'DOW', 'CSCO', 'INTC', 'VZ']
+return_col = 'log_return' # alternatively use 'ret' to get standard returns
 
-# inputdf = yf.download(tickers=tickerlist,period='25y')  
-# inputdf.to_pickle(r'/Users/asbjornfyhn/Desktop/Emp Fin/AEF/MA1/DJ_comp.pkl')
-# load data
-import os
-#print(os.getcwd())
-inputdf = pd.read_pickle(r'DJ_comp.pkl')
-inputdf.get('Adj Close').stack().reset_index()
+```
+
+In the following we complete the exercises for mandatory assignment 1.
+
+**Exercise 1. Compute monthly returns for each of the tickers.**
+```{python include: false} 
+inputdf = pd.read_pickle(r'DJ_comp.pkl') # inputdf = yf.download(tickers=tickerlist,period='25y')
 # transform the dataset
 df = (inputdf
       .get('Adj Close')
@@ -79,21 +73,23 @@ no_of_tickers = int(df['ticker'].unique().size)
 #print(f'The number of tickers in the dataset: { no_of_tickers}')
 
 #
-return_col = 'log_return'
 mu = np.array(df.groupby('ticker')[return_col].mean()).T
 sigma = np.array(df.pivot(index='date',columns='ticker',values=return_col).cov())
 ```
+We load data for a 25 year period for all constituents of the Dow Jones 30 Index. The dataset is cleaned by removing all consituents that don't have price data for each trading day in the period January 1st 2000 to December 31st 2023. `{python} len(inputdf['ticker'].unique())-len(df['ticker'].unique())` constituents are removed due to no price data. 
+Further, we calculate the monthly return for each ticker in the dataset. Here, we have chosen to use `{python} if return_col == 'log_return': 'log return' else: 'standard return'`
 
 **Exercise 2. Which of the 𝑁 individual assets delivered the highest Sharpe ratio?**
 ```{python}
-
 # Calculate Sharpe ratio for each stock
 sharpe_ratio = (mu - 0) / np.diag(sigma)
-
 # Print the Sharpe ratio
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
-# print(f'{sr_high} has the highest Sharpe ratio of {sharpe_ratio.max():.2f}')
+```
 
+Based on the monthly return series calculated earlier, we create a vector of the average monthly returns $\mu$ for each series and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratio, we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio of `{python} sharpe_ratio.max().round(2)` is `{python} sr_high`.
+
+```{python}
 def calc_return_std(weights, mu, sigma_matrix, factor):
   """
   Calculate the expected return and standard deviation of a portfolio.
@@ -112,16 +108,13 @@ def calc_return_std(weights, mu, sigma_matrix, factor):
   return return_vec, vol
 ```
 
-To calculate the Sharpe ratio we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio of `{python} sharpe_ratio.max().round(2)` is `{python} sr_high`.
-
 **Exercise 3. Perform each of the following steps:**
-
+First of we create a function compute_efficient_frontier which return an object with the inputs that consists of a vector of the estimated expected return, the estimated variance-covariance matrix and a factor that is used to annualised the return, minimum variance portfolio, efficient portfolio that delivers two times the expected return of the minimum variance portfolio and lastly the efficient frontier. 
+*How are the different things calculated*
 ***Compute the minimum variance portfolio weight**
+To compute the minimum variance portfolio we perform
 
-To compute the minimum variance portfolio we perform 
-
-```{python}
-
+```{python include: false}
 def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
     """
     The function performs each of the following steps:
@@ -183,10 +176,69 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     results.res = res   # store dataframe in object 
 
     return results
+```
+
+```{python}
 cef = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
 
 efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+efpSR = efpRet/efpVol
+
 mvpRet, mvpVol = calc_return_std(weights=cef.mvp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
-
-
+mvpSR = mvpRet/mvpVol
 ```
+
+The minimum variance portfolio has a expected return of `{python} (mvpRet*100).round(2)` and a volatility of `{python} (mvpVol*100).round(2)`. While the volatility of the efficient portfolio that delivers two times the expected return of the minimum variance is `{python} (efpVol*100).round(2)`. We notice that the Sharpe ratio `{python} if mvpSR > efpSR: 'decreases' else: 'increases'` from `{python} mvpSR` to `{python} efpSR`. 
+
+```{python include: false}
+#---- tangency portfolio
+# ¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
+#       connsider if there is a better way
+# ????????????????????????????????????????????????
+d = np.vstack((cef.inputs['sigma'],np.ones(27)))
+c = np.append(cef.inputs['mu'],0)
+e = np.hstack((d,c.reshape(c.shape[0],1)))
+q = np.append(np.zeros(cef.inputs['mu'].shape[0]),1)
+tan_weights = np.linalg.inv(e) @ q
+tan_weights = tan_weights[:-1]
+tanRet, tanVol = calc_return_std(weights=tan_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+
+# sharpe-ratio
+sharpeRatio = tanRet/tanVol
+
+vol = np.linspace(0,tanVol,101)
+x = np.linspace(0,1,101)
+ret = np.nan + np.zeros(vol.shape[0])
+for i, v in enumerate(x):
+   ret[i] = tanRet * v
+tanLine = pd.DataFrame((vol,ret),index=['vol','ret']).T
+
+res_figure = (
+  ggplot(cef.res, aes(x="sd", y="mu")) +
+  geom_point() + 
+  geom_line(tanLine, aes(x='vol',y='ret'))+
+  geom_point(
+    pd.DataFrame({"mu": [mvpRet, efpRet,tanRet],"sd":[mvpVol, efpVol,tanVol]}),
+    size=4, 
+    color='darkblue',
+    ) +
+  geom_point(
+    pd.DataFrame({"mu": cef.inputs['mu']*12,
+                  "sd": np.sqrt(np.diag(cef.inputs['sigma'])) * np.sqrt(12)
+                  })
+  ) +
+  labs(x="Annualized standard deviation",
+       y="Annualized expected return",
+       title="Efficient frontier for DOW index constituents") +
+  scale_x_continuous(labels=percent_format()) +
+  scale_y_continuous(labels=percent_format())
+)
+```
+
+```{python}
+res_figure
+```
+**Exercise 4. Efficient tangency:**
+*What are the eﬀicient tangency portfolio weights 𝜔tgc under the assumption that the risk- free rate is zero based on the true parameters 𝜇 and Σ? Do the tangency portfolio weights seem like a well-balanced portfolio? What are the potential issues when implementing this portfolio in reality? What is the maximum attainable Sharpe ratio assuming the risk-free rate is zero? Should the Sharpe ratio of 𝜔tgc be higher or lower than the Sharpe ratio of the individual assets?*
+
+**Exercise 4. Explain the code:**
