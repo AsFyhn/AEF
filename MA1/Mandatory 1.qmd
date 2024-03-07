@@ -87,7 +87,7 @@ sharpe_ratio = (mu - 0) / np.diag(sigma)
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 ```
 
-Based on the monthly return series calculated earlier, we create a vector of the average monthly returns $\mu$ for each series and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratio, we use the formula: $Sharpe=\frac{return-0}{standarddeviation}$. The stock with the highest Sharpe ratio of `{python} sharpe_ratio.max().round(2)` is `{python} sr_high`.
+Based on the monthly return series calculated earlier, we create a vector of the average monthly returns $\mu$ for each series and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratio, we use the formula: $Sharpe=\frac{return-r_f}{standarddeviation}$. The stock with the highest Sharpe ratio is `{python} sr_high` with a ration of `{python} sharpe_ratio.max().round(2)`.
 
 ```{python}
 def calc_return_std(weights, mu, sigma_matrix, factor):
@@ -240,5 +240,11 @@ res_figure
 ```
 **Exercise 4. Efficient tangency:**
 *What are the eﬀicient tangency portfolio weights 𝜔tgc under the assumption that the risk- free rate is zero based on the true parameters 𝜇 and Σ? Do the tangency portfolio weights seem like a well-balanced portfolio? What are the potential issues when implementing this portfolio in reality? What is the maximum attainable Sharpe ratio assuming the risk-free rate is zero? Should the Sharpe ratio of 𝜔tgc be higher or lower than the Sharpe ratio of the individual assets?*
+
+
+Transaction costs and estimation dificulties are the potential issues when implementing the market portfolio in reality. To implement the market portfolio in reality, one would have to constantly update the portfolio weights. The stock prices are constantly changing and so is the optimal weight of the market portfolio. Transaction costs include expenses to the stock exchange and costs associated with frequent trading of low volume stocks that often have high bid-ask spreads. Furthermore, estimating the optimal portfolio weight of all stocks and updating that estimation frequently requires expensive data-acces. As such, it is often cheaper for an investor to buy an MSCI World ETF, which mimics the market portfolio.
+
+The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market line. On the capital market line, stocks have the highest possible expected return for a given volatility. As such, the Sharpe ratio of the market portfolio will be higher than individual assets.
+
 
 **Exercise 4. Explain the code:**
