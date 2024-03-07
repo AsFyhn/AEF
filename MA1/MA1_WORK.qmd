@@ -239,11 +239,15 @@ res_figure = (
 ```
 
 ```{python}
+# | output : true
 res_figure
 ```
 
 **Exercise 4**  
-VI MANGLER STADIG FØRSTE DEL AF DENNE OPGAVE
+```{python}
+# | output : true
+print(tan_weights.round(2))
+```
 Transaction costs and estimation dificulties are the potential issues when implementing the market portfolio in reality. To implement the market portfolio in reality, one would have to constantly update the portfolio weights. The stock prices are constantly changing and so is the optimal weight of the market portfolio. Transaction costs include expenses to the stock exchange and costs associated with frequent trading of low volume stocks that often have high bid-ask spreads. Furthermore, estimating the optimal portfolio weight of all stocks and updating that estimation frequently requires expensive data-acces. As such, it is often cheaper for an investor to buy an MSCI World ETF, which mimics the market portfolio.
 
 The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market line. On the capital market line, stocks have the highest possible expected return for a given volatility. As such, the Sharpe ratio of the market portfolio will be higher than individual assets.
