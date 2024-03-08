@@ -18,7 +18,6 @@ format:
       - right=20mm
     cite-method: natbib
     fontsize: 12pt
-bibliography: references.bib
 ---
 
 ```{python}
@@ -268,6 +267,83 @@ The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market li
 Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
 
 **Exercise 6 and 7**  
+```{python}
+# simulating returns 
+def simulate_returns(periods=200,
+                     expected_returns=mu,
+                     covariance_matrix=sigma):
+    """
+        periods (int): Number of periods
+        expected_returns (array-like): Expected returns for each asset
+        covariance_matrix (array-like): Covariance matrix of returns
+    """
+    return np.random.multivariate_normal(
+       mean=expected_returns, 
+       cov=covariance_matrix, 
+       size=periods
+    )
+
+def calc_eff_tang_port(x):
+  d = np.vstack((x.inputs['sigma'],np.ones(27)))
+  c = np.append(x.inputs['mu'],0)
+  e = np.hstack((d,c.reshape(c.shape[0],1)))
+  q = np.append(np.zeros(x.inputs['mu'].shape[0]),1)
+  tan_weights = np.linalg.inv(e) @ q
+  tan_weights = tan_weights[:-1]
+  return tan_weights 
+
+
+simLength = 100
+simdraws = {i:{} for i in range(simLength)}
+np.random.seed(100)
+for i in range(simLength):
+  if i % 10==0: print(f'{i+1} out of {simLength}')
+  draw1 = pd.DataFrame(simulate_returns(periods=200,expected_returns=cef.inputs['mu'],covariance_matrix=cef.inputs['sigma']))
+  mu_sim_est = np.array(draw1.mean()).T
+  sigma_sim_est = np.array(draw1.cov())
+  eff = compute_efficient_frontier(mu_est=mu_sim_est,sigma_est=sigma_sim_est,yearly_factor=12)
+  sim_df = eff.res
+  sim_df['sim_draw_no'] = i
+  tan_weights = calc_eff_tang_port(x=eff)
+  tanRet, tanVol = calc_return_std(weights=tan_weights,mu=eff.inputs['mu'],sigma_matrix=eff.inputs['sigma'],factor=eff.inputs['yearly_factor'])
+  simdraws[i] = {'Frontier':sim_df,
+                          'Tangency Weights': tan_weights,
+                          'Sharpe Ratio': tanRet/tanVol,
+                          'input':{'mu':mu_sim_est,
+                                   'sigma':sigma_sim_est,
+                                   'data':draw1}}
+
+sim_df = pd.concat([simdraws[i]['Frontier'] for i in range(simLength)])
+# plot of first simulatioj
+res_figure2 = (
+  ggplot(sim_df.loc[sim_df['sim_draw_no']==0], aes(x="sd", y="mu")) +
+  geom_point() + 
+  geom_point(cef.res, colour='red') + 
+  labs(x="Annualized standard deviation",
+       y="Annualized expected return",
+       title="Efficient frontier for true parameters and simulated") +
+  scale_x_continuous(labels=percent_format()) +
+  scale_y_continuous(labels=percent_format())
+)
+# plot of all 100 simulations
+res_figure3 = (
+    ggplot(sim_df, aes(x="sd", y="mu",group='sim_draw_no')) +
+    geom_point(alpha=0.05)  # Plot first element with label
+    +geom_point(cef.res.assign(sim_draw_no = -1),alpha=1,colour='black') + 
+    labs(x="Annualized standard deviation",
+        y="Annualized expected return",
+        title="Efficient frontier for all simulations") 
+)
+```
+```{python}
+# | output : true
+res_figure2
+```
+```{python}
+# | output : true
+res_figure3
+```
+
 This section explores the deviations between the theoretical efficient frontier and its estimates obtained through sample data. We achieve this by simulating multiple sample return series and constructing the corresponding efficient frontiers.
 
 *Simulation Process*:
@@ -294,9 +370,24 @@ As the number of simulations increases (i.e., larger sample size), the simulated
 
 In conclusion, this simulation exercise underscores the importance of considering the limitations of sample-based estimates when constructing the efficient frontier. While the true frontier represents the optimal allocation for maximizing expected return for a given level of risk, practical implementation relies on estimates derived from available data. The presented results emphasize the uncertainty associated with these estimates and the potential deviations from the true efficient frontier.
 
-**Exercise 8**  
+**Exercise 8 & 9**  
+We compute the efficient tangent portfolio for each simulated return sample, assuming a zero risk-free rate and utilizing the estimated covariance matrix $\hat{\Sigma}$ and mean vector $\hat{\mu}$. The portfolio weights are derived as earlier described. With these weights, we calculate the annualized Sharpe ratio using true parameters $\mu$ and $\Sigma$, employing the formula $\text{SR} = \sqrt{12} \frac{\omega^{tg}\mu}{\sqrt{\omega^*{tg}\Sigma \omega^*_{tg}}}$. The resultant Sharpe ratios are stored and visualized in a histogram, providing insight into portfolio performance variability across simulations.
 
-**Exercise 9**  
+The histogram shows Sharpe Ratios for the 100 simulated tangency portfolios. The red dashed line marks the true Sharpe Ratio derived from true parameters.
+We note that for most of the simulations, the sharpe ratios are below the one derived with true parameters. 
+```{python}
+# | output : true
+# plot histogram of sharpe ratios
+(
+    ggplot(pd.DataFrame([simdraws[i]['Sharpe Ratio'] for i in range(simLength)],columns=['Sharpe Ratio'])) + 
+    aes(x = 'Sharpe Ratio') +
+    geom_histogram(binwidth=0.1) +
+    geom_vline(xintercept=tanRet/tanVol,colour='red',linetype='dashed') + 
+    labs(x="Shapre Ratio",
+        y="Freq",
+        title="Share")
+)
+```
 
 **Exercise 10**  
 When we increase the sample size periods, our results asymptotically moves towards their true value. 
