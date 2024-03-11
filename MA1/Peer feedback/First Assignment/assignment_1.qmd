@@ -1,0 +1,593 @@
+---
+title: "Mandatory Assignment 1"
+author: "Lucas Billot"
+date: "2024-03-08"
+execute: 
+  echo: false
+  warning: false
+  results: true
+  fig-show: true
+format:
+  pdf: 
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - top=20mm
+      - left=20mm
+      - bottom=20mm
+      - right=20mm
+    cite-method: natbib
+    fontsize: 12pt
+bibliography: references.bib
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+# Eﬀicient portfolios and estimation uncertainty
+
+In this analysis, we evaluate the statistical error in portfolio weights by contrasting the plug-in estimation method against the theoretically optimal portfolio weights. Utilizing historical sample moments as a benchmark, we simulate returns for DOW Jones constituents, estimating mean and covariance matrices, and subsequently deriving portfolio weights. Comparing these plug-in estimates with the true optimal weights, we uncover substantial deviations, particularly in scenarios with limited data. The study, in line with Brandt 2010, highlights the challenges of relying on simulation techniques, emphasizing their susceptibility to parameter uncertainty. Through a comprehensive assessment of minimum variance and efficient tangent portfolios, alongside Sharpe ratios, we underscore the significance of acknowledging statistical limitations in real-world portfolio optimization.
+
+# Exercises
+
+The Capital Asset Pricing Model (CAPM) is a cornerstone in finance, linking expected asset returns to systematic risk. Our focus lies in testing the theoretical CAPM against plug-in estimation methods, emphasizing mean-variance analysis. The efficient frontier, a vital aspect of this analysis, optimally balances risk and return in portfolio construction, offering insights into achieving optimal investment outcomes, based on the true estimates.
+In the first part of this analysis we wish to calculate the minimum variance- and efficient tangent portfolio and the Sharpe Ratios of the constituents of the DOW Jones index, such that we can plot the theoretical efficient frontier. This we will use as a refererence to compare our simulation results with.
+
+**Question 1.**
+
+```{r}
+#loading in the required packages
+library(tidyverse)
+library(tidyquant)
+library(tibble)
+library(plotly)
+```
+
+```{r}
+#getting the constituents of the Dow Jones index
+prices <- tq_index('DOW')
+
+#getting stock prices for the required period
+index_prices <- tq_get(prices,
+  get = "stock.prices",
+  from = "2000-01-01",
+  to = "2023-12-31"
+)
+
+#take a look at the data set. Clearly we need to do some data cleaning
+```
+
+```{r}
+#We remove the superflous columns, and we remove tickers not in the full sample
+
+#Here we for all symbols count the number of days traded, and filter the ones with
+#maximum number of counting days and remove those
+filtered_prices <- index_prices |> 
+  group_by(symbol) |> 
+  mutate(n = n()) |> #creating a nex column with the counted trading days
+  ungroup() |> 
+  filter(n == max(n)) |> #only take the maximum of the trading days
+  select(-n) #removes the n column again
+
+#lets check which symbols got removed
+removed_symbols <- setdiff(index_prices |>  pull(symbol), filtered_prices |>  pull(symbol))
+
+#Continue with the rest of the analysis using 'filtered_prices'
+```
+
+```{r}
+#now we can compute monthly returns for the tickers
+returns <- filtered_prices |> 
+  mutate(month = floor_date(date, 'month')) |> #creates new column which captures the month 
+  group_by(symbol, month) |> #for every month and symbol
+  summarize(price = last(adjusted), .groups = 'drop_last') |> #calculate the price which is the last adjusted price 
+  mutate(net_return = price / lag(price) - 1) |> #create new column with the net returns
+  select(-price) |> #remove the column called price
+  drop_na(net_return) #drop missing values
+```
+
+```{r}
+#create a table of the first monthly returns for each symbol
+first_monthly_returns <- filtered_prices |> 
+  group_by(symbol) |> 
+  arrange(date) |> #for each month and for the first day
+  summarize('First Monthly Return' = ((adjusted / lag(adjusted)) - 1)[2]) #calculate this
+
+#display the table
+monthly_return_snippet <- head(first_monthly_returns, 5)
+
+knitr::kable(monthly_return_snippet, digits = 3, col.names = c('Ticker', 'Monthly Returns'), caption = 'Monthly returns for 3 Jan 2000', label = 'Table 1')
+```
+
+**Answer:** Using the tidyverse and tidyquant packages, stock prices from the DOW Jones constituents can be downloaded. Removing tickers with no continuous trading history leads to the exclusion of removed_symbols, resulting in 27 remaining constituents. Monthly net returns for each constituent on January 3, 2000, are then displayed.
+
+
+**Question 2.**
+
+```{r}
+#using pivot_wider we can get the data fram to look like a matrix
+returns_matrix <- returns |> 
+  pivot_wider( 
+    names_from = symbol,
+    values_from = net_return 
+  ) |> 
+  select(-month)
+```
+
+```{r}
+#Now we can calculate the cov-variance matrix and the mean
+Sigma <- cov(returns_matrix)
+mu <- colMeans(returns_matrix)
+
+#We show the SR in a table
+sharpe_ratio <- (12 * 100 * mu) / (12 * sqrt(100) * sqrt(diag(Sigma)))
+
+sharpe_ratio_snippet <- head(sharpe_ratio, 5)
+
+knitr::kable(sharpe_ratio_snippet, digits = 3, col.names = c('Ticker', 'Sharpe Ratio'), caption = 'Annualized Sharpe Ratios for Dow Jones constituents', label = 'Table 2')
+```
+
+**Answer:** Calculating the sample mean, $\mu$, and the variance-covariance matrix, $\Sigma$, the Sharpe-Ratio (SR) is obtained as $SH=\mu/\sqrt{diag(\Sigma)}$, assuming a zero risk-free rate. The stock providing the highest SR is identified as UNH.
+
+
+**Question 3.**  
+
+```{r}
+#Create the function
+compute_efficient_frontier <- function(Sigma, mu) {
+  # First, we do step one and calculate the minimum variance portfolio weights
+  iota <- rep(1, ncol(Sigma)) # vector of ones
+  sigma_inv <- solve(Sigma) # solve linear system eq.
+  w_mvp <- sigma_inv %*% iota # solving the minimization problem (%*% is a matrix product)
+  w_mvp <- w_mvp / sum(w_mvp) # normalize the weights
+  
+  # Second, we do step two and calculate the efficient tangency portfolio weights
+  C <- as.numeric(t(iota) %*% sigma_inv %*% iota)
+  D <- as.numeric(t(mu) %*% sigma_inv %*% iota)
+  E <- as.numeric(t(mu) %*% sigma_inv %*% mu)
+  mu_bar <- 2 * (D / C) # multiply by two as asked in the question
+  lambda_tilde <- as.numeric(2 * (mu_bar - D / C) / (E - D^2 / C))
+  w_eff <- w_mvp + lambda_tilde / 2 * (sigma_inv %*% mu - D / C * sigma_inv %*% iota)
+
+  # Lastly, we do step three, which is to make a tibble of the weights so we can plot the efficient frontier later
+  # Create a sequence of c values
+  c_values <- seq(-0.1, 1.2, by = 0.01)
+
+  # Initialize an empty data frame to store the results
+  efficient_frontier <- data.frame(c = c_values)
+
+  # Initialize vectors to store portfolio mean and volatility
+  portfolio_means <- numeric(length(c_values))
+  portfolio_volatilities <- numeric(length(c_values))
+
+  # Use the two mutual fund theorem and calculate the linear combinations and store in the same data frame
+  for (i in seq_along(c_values)) {
+    # Calculate the portfolio weights
+    weights_combination <- c_values[i] * w_mvp + (1 - c_values[i]) * w_eff
+    
+    # Store the weights in the data frame
+    efficient_frontier[i, 2:(length(weights_combination) + 1)] <- weights_combination
+
+    # Calculate portfolio mean and volatility
+    portfolio_means[i] <- t(weights_combination) %*% mu
+    portfolio_volatilities[i] <- sqrt(t(weights_combination) %*% Sigma %*% weights_combination)
+  }
+
+  # Extract symbols from the returns matrix
+  symbols <- colnames(Sigma)
+
+  # Rename the columns of the efficient_frontier data frame with the symbols
+  colnames(efficient_frontier)[-1] <- symbols
+  
+  # Add portfolio mean and volatility columns to the data frame
+  efficient_frontier$Portfolio_Mean <- portfolio_means
+  efficient_frontier$Portfolio_Volatility <- portfolio_volatilities
+
+  return(efficient_frontier)
+}
+```
+
+```{r}
+#Lets try to call the function
+efficient_frontier <- compute_efficient_frontier(Sigma, mu)
+
+efficient_frontier_snippet <- efficient_frontier[ ,1:5]# Display the first 5 rows
+efficient_frontier_snippet2 <- head(efficient_frontier_snippet, 5)
+
+# Create a table with kable
+knitr::kable(efficient_frontier_snippet2, digits = 3, caption = 'Weights for the Dow Jones constituents characterising the efficient frontier', label = 'Table 3')
+#we get the sequence,c, in the first column and in the subsequent columns all the linear combination of the weights. Perfect!
+```
+
+**Answer** The analysis proceeds with the computation of minimum variance portfolio weights, efficient tangency portfolio weights, and the construction of the efficient frontier. The resulting data frame details a sequence of portfolio weights (𝜔) derived from linear combinations of the minimum variance and efficient tangency portfolios.
+
+
+**Question 3.**  
+
+```{r}
+#| fig-width: 6
+#| fig-asp: 0.618
+#| fig-align: center
+#| out-width: 70%
+
+#we manually solve the minimum variance- and efficient tangent portfolio problems so as to plot them
+iota <- rep(1, ncol(Sigma)) # vector of ones
+sigma_inv <- solve(Sigma) # solve linear system eq.
+w_mvp <- sigma_inv %*% iota # solving the minimization problem (%*% is a matrix product)
+w_mvp <- w_mvp / sum(w_mvp) # normalize the weights
+  
+# Second, we do step two and calculate the efficient tangency portfolio weights
+C <- as.numeric(t(iota) %*% sigma_inv %*% iota)
+D <- as.numeric(t(mu) %*% sigma_inv %*% iota)
+E <- as.numeric(t(mu) %*% sigma_inv %*% mu)
+mu_bar <- 2 * (D / C) # multiply by two as asked in the question
+lambda_tilde <- as.numeric(2 * (mu_bar - D / C) / (E - D^2 / C))
+w_eff <- w_mvp + lambda_tilde / 2 * (sigma_inv %*% mu - D / C * sigma_inv %*% iota)
+
+#here we create dataframes with the annualized means and volatilites of the INDIVIDUAL assets based on the Sigma and mu vectors
+asset_stats <- data.frame(
+  Asset = colnames(Sigma),
+  mean = 12 * 100 * mu,
+  volatility = 12 * sqrt(100) * sqrt(diag(Sigma))
+)
+
+#We create dataframes as well for the minimum variance- and efficient tangent portfolios such that we can plot their location on the frontier. This is neccesary because it comes out as a matrix from the function from 3) so we need a dataframe instead so we can plot it.
+w_mvp_stats <- data.frame(
+  Asset = colnames(Sigma),
+  mean = 12 * 100 * t(w_mvp) %*% mu,
+  volatility = 12 * sqrt(100) * sqrt(t(w_mvp) %*% Sigma %*% w_mvp)
+)
+
+w_eff_stats <- data.frame(
+  Asset = colnames(Sigma),
+  mean = 12 * 100 * t(w_eff) %*% mu,
+  volatility = 12 * sqrt(100) * sqrt(t(w_eff) %*% Sigma %*% w_eff)
+)
+
+#Now, we can plot it all. The efficient frontier and portfolio dots
+efficient_tangent_plot <- ggplot() +
+  geom_point(data = asset_stats, aes(x = volatility, y = mean), size = 3) + #this is plotting the individual stocks
+  geom_point(data = efficient_frontier, aes(x = 12 * sqrt(100) * Portfolio_Volatility, y = 12 * 100 * Portfolio_Mean), size = 3) + #efficient frontier
+  geom_point(data = w_mvp_stats, aes(x = volatility, y = mean), color = 'red', size = 8) + #plotting the minimum variance portfolio
+  geom_point(data = w_eff_stats, aes(x = volatility, y = mean), color = 'green', size = 8) + #plotting the efficient tangent portfolio
+  labs(x = "Annualized volatility (in percent)", y = "Annualized expected return (in percent)", title = " Figure 1: Efficient Frontier") +
+  theme_minimal() #this is my favorite theme :-)
+
+#display the combined plot
+print(efficient_tangent_plot)
+```
+
+**Answer** Plotting the efficient frontier, the curvature reveals significant diversification rewards, particularly with the minimum variance and efficient tangency portfolios. Notably, these portfolios exhibit returns of mvp_return & eff_return and volatilities of mvp_volatility & eff_volatility, respectively.
+
+
+**Question 4.**  
+
+```{r}
+#We can plot the efficient tangent portfolio weights by tibulating them from above values
+w_eff_snippet <- head(w_eff, 5)
+Sigma_snippet <- head(colnames(Sigma), 5)
+
+knitr::kable(tibble(Sigma_snippet, w_eff_snippet), digits = 3, col.names = c('Ticker', 'Efficient tangency portfolio weights'), label = 'Table 4') #w_eff is from above and calculates the weights we need
+```
+
+```{r}
+#We can then calculate the sharpe ratio manually as well
+sharpe_ratio_tcg <- w_eff_stats |> pull(mean) / w_eff_stats |> pull(volatility)
+```
+
+**Answer:** Efficient tangency portfolio weights, allowing for both long and short positions, are assessed. The portfolio, characterized by a low annualized volatility and a high annualized return of ..., respectively, emphasizes the diversification benefits and the risk associated with e.g., the APPLE stock (with the highest weight of ...). Issues include the allowance of short-selling and reliance on historical data, since most of the litterature finds evidence of the weak market form hypothesis.
+The maximum attainable SR, represented by the efficient tangency portfolio, exceeds individual assets' SR. The theoretical benefits of diversification in the market portfolio are thus evident.
+
+Simulation techniques are introduced, involving the function simulate_returns to obtain empirical estimates of minimum variance and efficient tangency portfolios. In line with Brandt 2010, discrepancies between theoretical and empirical estimates arise, with empirical values exhibiting a negative bias and overestimating diversification benefits.
+
+**Question 5.**  
+
+```{r}
+##| echo: true
+
+# Setting parameters
+periods <- 200
+expected_returns <- mu
+covariance_matrix <- Sigma
+
+simulate_returns <- function(periods = 200,
+                             expected_returns = mu,
+                             covariance_matrix = Sigma){
+  MASS::mvrnorm(n = periods, expected_returns, covariance_matrix)
+}
+```
+
+**Answer:** The usual building bloks of a function sript in R is: i) the name of the function.
+2) the inputs the function should use.
+3) Lastly, inside the {} sign, what the function should do with these inputs.
+The function name here is simulate_returns.
+A very giving name as to what the function is going to do, i.e., simulate returns from a multivariate normal distribution.
+Next, the inputs are the number of periods to simulate, here set to 200.
+expected_returns is the return vector of assets, here set to the empirical return vector mu.
+Finally, covariance_matrix is the variance-covariance matrix, which is set to the outside \Sigma which we have worked with so far.
+The function uses MASS::mvrnorm to simulate from a multivariate normal distribution, with n (200) periods, and from the mu and Sigma return- and variance matrices defined outside the function.
+The output of the function is a matrix with simulated returns in each row, and asset names in each column.
+**Remember a source here**
+
+
+**Question 6.**  
+
+```{r}
+set.seed(2023) #setting a seed so we get the same results again and again
+simulation <- simulate_returns(periods = 200) #calling the function and running one simulation. Check the enviroment.
+
+#Now, as before we can calculate the return vector and the variance-covariance matrix, but now for the new data
+Sigma_simulated <- cov(simulation)
+mu_simulated <- colMeans(simulation)
+```
+
+```{r}
+#We can now go through the same hurdle and calculate the minimum variance portfolio and efficient tangent portfolio weights
+#minimum variance portfolio weights
+iota_simulated <- rep(1, ncol(Sigma_simulated))
+sigma_inv_simulated <- solve(Sigma_simulated)
+w_mvp_simulated <- sigma_inv_simulated %*% iota_simulated
+w_mvp_simulated <- w_mvp_simulated / sum(w_mvp_simulated)
+mvp_return_simulated <- 12 * 100 * t(w_mvp_simulated) %*% mu_simulated
+mvp_volatility_simulated <- 12 * sqrt(100) * sqrt(t(w_mvp_simulated) %*% Sigma_simulated %*% w_mvp_simulated)
+
+#Calculate the efficient tangency portfolio weights for the simulated data
+C_simulated <- as.numeric(t(iota_simulated) %*% sigma_inv_simulated %*% iota_simulated)
+D_simulated <- as.numeric(t(mu_simulated) %*% sigma_inv_simulated %*% iota_simulated)
+E_simulated <- as.numeric(t(mu_simulated) %*% sigma_inv_simulated %*% mu_simulated)
+mu_bar_simulated <- 2 * (D_simulated / C_simulated)
+lambda_tilde_simulated <- as.numeric(2 * (mu_bar_simulated - D_simulated / C_simulated) / (E_simulated - D_simulated^2 / C_simulated))
+w_eff_simulated <- w_mvp_simulated + lambda_tilde_simulated / 2 * (sigma_inv_simulated %*% mu_simulated - D_simulated / C_simulated * sigma_inv_simulated %*% iota_simulated)
+eff_return_simulated <- 12* 100* t(w_eff_simulated) %*% mu_simulated
+eff_volatility_simulated <- 12 * sqrt(100) * sqrt(t(w_eff_simulated) %*% Sigma_simulated %*% w_eff_simulated)
+
+# Create a sequence so we can plot the new efficient frontier with the simulated data
+# Create a sequence of c values
+c_values_simulated <- seq(-0.1, 1.2, by = 0.01)
+
+# Initialize an empty data frame to store the results
+efficient_frontier_simulated <- data.frame(c = c_values_simulated)
+
+# Initialize vectors to store portfolio mean and volatility
+portfolio_means_simulated <- numeric(length(c_values_simulated))
+portfolio_volatilities_simulated <- numeric(length(c_values_simulated))
+
+# Use the two mutual fund theorem and calculate the linear combinations and store in the same data frame
+for (i in seq_along(c_values_simulated)) {
+  # Calculate the portfolio weights
+  weights_combination_simulated <- c_values_simulated[i] * w_mvp_simulated + (1 - c_values_simulated[i]) * w_eff_simulated
+    
+  # Store the weights in the data frame
+  efficient_frontier_simulated[i, 2:(length(weights_combination_simulated) + 1)] <- weights_combination_simulated
+
+  # Calculate portfolio mean and volatility
+  portfolio_means_simulated[i] <- t(weights_combination_simulated) %*% mu_simulated
+  portfolio_volatilities_simulated[i] <- sqrt(t(weights_combination_simulated) %*% Sigma_simulated %*% weights_combination_simulated)
+}
+  # Extract symbols from the returns matrix
+  symbols <- colnames(Sigma_simulated)
+
+  # Rename the columns of the efficient_frontier data frame with the symbols
+  colnames(efficient_frontier_simulated)[-1] <- symbols
+  
+  # Add portfolio mean and volatility columns to the data frame
+  efficient_frontier_simulated$Portfolio_Mean <- portfolio_means_simulated
+  efficient_frontier_simulated$Portfolio_Volatility <- portfolio_volatilities_simulated
+```
+
+```{r}
+#| fig-width: 6
+#| fig-asp: 0.618
+#| fig-align: center
+#| out-width: 70%
+
+efficient_tangent_plot_new <- ggplot() +
+  geom_point(data = efficient_frontier, aes(x = 12 * sqrt(100) * Portfolio_Volatility, y = 12 * 100 * Portfolio_Mean), size = 3) + #efficient frontier
+  geom_point(data = efficient_frontier_simulated, aes(x = 12 * sqrt(100) * Portfolio_Volatility, y = 12 * 100 * Portfolio_Mean), size = 3) + #efficient frontier from simulated data
+  geom_point(data = w_mvp_stats, aes(x = volatility, y = mean), color = 'red', size = 8) + #plotting the minimum variance portfolio
+  geom_point(data = w_eff_stats, aes(x = volatility, y = mean), color = 'green', size = 8) + #plotting the efficient tangent portfolio
+  annotate(geom = "point", x = mvp_volatility_simulated, y = mvp_return_simulated, color = "purple", size = 8, shape = 16) + # NEW min variance portfolio
+  annotate(geom = "point", x = eff_volatility_simulated, y = eff_return_simulated, color = "yellow", size = 8, shape = 16) + #NEW eff tangent portfolio
+  labs(x = "Annualized volatility (in percent)", y = "Annualized expected return (in percent)", title = " Figure 1: Efficient Frontier for the theoretical and simulated data") +
+  theme_minimal() #this is my favorite theme :-)
+
+#display the combined plot
+print(efficient_tangent_plot_new)
+```
+
+```{r}
+#we calculate the mean and volatility of the theoretical minimum variance- and efficient tangent portfolios
+mvp_return <- 12 * 100 * t(w_mvp) %*% mu
+mvp_volatility <- 12 * sqrt(100) * sqrt(t(w_mvp) %*% Sigma %*% w_mvp)
+eff_return <- 12* 100* t(w_eff) %*% mu
+eff_volatility <- 12 * sqrt(100) * sqrt(t(w_eff) %*% Sigma %*% w_eff)
+
+result_table <- data.frame(
+  Parameter = c("Minimum variance return", "Minimum variance volatility", "Efficient tangent return", "Efficient tangent volatility"),
+  "True Values" = c(mvp_return, mvp_volatility, eff_return, eff_volatility),
+  "Empirical Values" = c(mvp_return_simulated, mvp_volatility_simulated, eff_return_simulated, eff_volatility_simulated)
+)
+
+# Print the table using knitr::kable
+knitr::kable(result_table, digits = 3, format = "markdown", col.names = c("", "True Values", "Empirical Values"), label = 'Figure 1: True and empirical plug-in estimates')
+```
+
+**Answer:** In the above figure we see the efficient frontier for the theoretical and empirical values.
+The red and green dots represent the theoretical efficient tangent portfolio and theoretical minimum variance portfolio, respectively.
+The yellow and purple dots represent the empirical counterparts, respectively.
+Empirical efficient frontiers, differing from theoretical estimates, highlight the overestimation of diversification benefits in plug-in estimates. Longer sample periods tend to converge toward true theoretical parameters.
+
+
+**Question 7.**  
+
+```{r}
+simulations <- 100
+
+# Initialize lists to store results
+mvp_weights <- vector("list", simulations)
+mvp_returns <- numeric(simulations)
+mvp_volatilities <- numeric(simulations)
+
+w_eff_simulated_eff <- vector("list", simulations)
+eff_return_simulated_eff <- numeric(simulations)
+eff_volatility_simulated_eff <- numeric(simulations)
+
+sharpe_ratios <- numeric(simulations)
+
+simulated_frontiers <- vector("list", simulations)
+
+# Perform simulations
+set.seed(2023) # setting a seed so we get the same results again and again
+for (i in 1:simulations) {
+  simulation_data <- simulate_returns(periods)
+  
+  # Calculate minimum variance portfolio weights
+  w_mvp_simulated <- solve(cov(simulation_data)) %*% rep(1, length(mu)) / sum(solve(cov(simulation_data)) %*% rep(1, length(mu)))
+  mvp_return_simulated <- t(w_mvp_simulated) %*% colMeans(simulation_data)
+  mvp_volatility_simulated <- sqrt(t(w_mvp_simulated) %*% cov(simulation_data) %*% w_mvp_simulated)
+  
+  # Store results
+  mvp_weights[[i]] <- w_mvp_simulated
+  mvp_returns[i] <- mvp_return_simulated
+  mvp_volatilities[i] <- mvp_volatility_simulated
+  
+  # Calculate efficient tangent portfolio weights
+  C_simulated <- as.numeric(t(rep(1, length(mu))) %*% solve(cov(simulation_data)) %*% rep(1, length(mu)))
+  D_simulated <- as.numeric(t(expected_returns) %*% solve(cov(simulation_data)) %*% rep(1, length(mu)))
+  E_simulated <- as.numeric(t(expected_returns) %*% solve(cov(simulation_data)) %*% expected_returns)
+  mu_bar_simulated <- 2 * (D_simulated / C_simulated)
+  lambda_tilde_simulated <- as.numeric(2 * (mu_bar_simulated - D_simulated / C_simulated) / (E_simulated - D_simulated^2 / C_simulated))
+  w_eff_simulated <- w_mvp_simulated + lambda_tilde_simulated / 2 * (solve(cov(simulation_data)) %*% expected_returns - D_simulated / C_simulated * solve(cov(simulation_data)) %*% rep(1, length(mu)))
+  eff_return_simulated <- t(w_eff_simulated) %*% colMeans(simulation_data)
+  eff_volatility_simulated <- sqrt(t(w_eff_simulated) %*% cov(simulation_data) %*% w_eff_simulated)
+  
+  # Store results
+  w_eff_simulated_eff[[i]] <- w_eff_simulated
+  eff_return_simulated_eff[i] <- eff_return_simulated
+  eff_volatility_simulated_eff[i] <- eff_volatility_simulated
+  
+  # Calculate Sharpe ratio
+  sharpe_ratio_simulated <- sqrt(12) * t(w_eff_simulated) %*% mu / sqrt(t(w_eff_simulated) %*% Sigma %*% w_eff_simulated)
+  
+  # Store results
+  sharpe_ratios[i] <- sharpe_ratio_simulated
+  
+  # Create a sequence of c values for the efficient frontier
+  c_values_simulated <- seq(-0.1, 1.2, by = 0.01)
+  
+  # Initialize an empty data frame to store the results for each simulation
+  efficient_frontier_simulated <- data.frame(c = c_values_simulated)
+  
+  # Initialize vectors to store portfolio mean and volatility
+  portfolio_means_simulated <- numeric(length(c_values_simulated))
+  portfolio_volatilities_simulated <- numeric(length(c_values_simulated))
+  
+  # Use the two mutual fund theorem and calculate the linear combinations
+  for (j in seq_along(c_values_simulated)) {
+    # Calculate the portfolio weights
+    weights_combination_simulated <- c_values_simulated[j] * w_mvp_simulated + (1 - c_values_simulated[j]) * w_eff_simulated
+    
+    # Store the weights in the data frame
+    efficient_frontier_simulated[j, 2:(length(weights_combination_simulated) + 1)] <- weights_combination_simulated
+    
+    # Calculate portfolio mean and volatility
+    portfolio_means_simulated[j] <- t(weights_combination_simulated) %*% colMeans(simulation_data)
+    portfolio_volatilities_simulated[j] <- sqrt(t(weights_combination_simulated) %*% cov(simulation_data) %*% weights_combination_simulated)
+  }
+  
+  # Add simulated efficient frontier to the list
+  simulated_frontiers[[i]] <- efficient_frontier_simulated
+}
+
+# Plot all simulated efficient frontiers together with the theoretically optimal one
+simulated_frontiers_plot <- ggplot() +
+  geom_point(data = efficient_frontier, aes(x = 12 * sqrt(100) * Portfolio_Volatility, y = 12 * 100 * Portfolio_Mean), size = 3) +
+  lapply(simulated_frontiers, function(simulated_frontier) {
+    geom_line(data = simulated_frontier, aes(x = 12 * sqrt(100) * portfolio_volatilities_simulated, y = 12 * 100 * portfolio_means_simulated), size = 1, alpha = 0.2, color = "gray")
+  }) +
+  labs(x = "Annualized volatility (in percent)", y = "Annualized expected return (in percent)", title = "Simulated Efficient Frontiers") +
+  theme_minimal()
+
+# Display the plot
+print(simulated_frontiers_plot)
+```
+
+**Answer:** In the figure above we see that the empirical efficient frontiers seem to differ quite a lot from the theoretical estimates.
+The main takeaway is that the plug-in estimates seem to overestimate the diversification benefits massively, and thereby provide an inaccurate description of the efficient frontiers and most of the simulated efficient frontiers seem to be centered around the curved part of the efficient frontier around the minimum variance portfolio.
+Changing the sample periods towards higher periods, i.e., periods = 1000 will result in convergence towards the true theoretical parameters (application of the law of large numbers), which implies that with periods = 10000 for example the plug-in estimated efficient frontiers will all lay on the theoretical efficient frontier.
+
+
+**Question 8.**  
+
+```{r}
+sharpe_ratios_snippet <- head(sharpe_ratios, 5)
+
+knitr::kable(tibble(Sigma_snippet, sharpe_ratios_snippet), digits = 3, col.names = c('Ticker', 'Simulated Sharpe-ratios'), label = 'Table 5')
+```
+
+**Answer** In the figure above we see the simulated sharpe-ratios.
+Simulated Sharpe ratios appear lower than theoretical values, reflecting limitations in small sample periods. The distribution of SRs centers around 1.3, deviating significantly from theoretical SR.
+
+
+**Question 9.**  
+
+```{r}
+sharpe_ratios_plot <- ggplot() +
+  geom_histogram(aes(x = sharpe_ratios), bins = 20, fill = "blue", alpha = 0.7, color = "black") +
+  geom_vline(xintercept = sharpe_ratio_tcg, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = mean(sharpe_ratio), color = 'green', linetype = 'dashed', size = 1) +
+  labs(x = "Sharpe Ratio", y = "Frequency", title = "Distribution of Simulated Sharpe Ratios") +
+  theme_minimal()
+
+# Display the plot
+print(sharpe_ratios_plot)
+```
+
+**Answer** In the figure above we see the distribution of the SR's. The red dashed line represents the theoretical SR of the efficient tangent portfolio. The green dashed line represents the mean of the theoretical SR´s. The blue boxes represents the distribution of the simulated SR´s.
+The distribution of SRs centers around 1.3, deviating significantly from theoretical SR. It is centered at the mean of the theoretical SR´s.
+
+**Question 10.** 
+
+```{r}
+#| output: false
+N <- ncol(Sigma)
+w_naive <- 1 /N * iota
+naive_sharpe_ratio <- sqrt(12) * t(w_naive) %*% mu / sqrt(t(w_naive) %*% Sigma %*% w_naive)
+
+A <- t(rbind(1,
+             diag(N)))
+cbind(t(A), c(1, rep(0, N)))
+
+solution <- quadprog::solve.QP(Dmat = 2 * Sigma,
+                               dvec = mu,
+                               Amat = A,
+                               bvec = c(1, rep(0, N)),
+                               meq = 1)
+w_no_short_sell <- solution$solution
+sharpe_ratio_no_short_sell <- sqrt(12) * t(w_no_short_sell) %*% mu / sqrt(t(w_no_short_sell) %*% Sigma %*% w_no_short_sell)
+```
+
+```{r}
+sharpe_ratios_plot_backtesting <- ggplot() +
+  geom_histogram(aes(x = sharpe_ratios), bins = 20, fill = "blue", alpha = 0.7, color = "black") +
+  geom_vline(xintercept = sharpe_ratio_tcg, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = naive_sharpe_ratio, color = "yellow", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = sharpe_ratio_no_short_sell, color = "purple", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = mean(sharpe_ratio), color = 'green', linetype = 'dashed', size = 1) +
+  labs(x = "Sharpe Ratio", y = "Frequency", title = "Distribution of Simulated Sharpe Ratios") +
+  theme_minimal()
+
+# Display the plot
+print(sharpe_ratios_plot_backtesting)
+```
+
+**Answer:** Longer sample periods makes it converge towards the true mean of the sharpe ratio, which is indicated by the green dashed line.
+We can conclude that assets are NOT normally distributed in small sample periods and we should allow for fatter tails, such that we would get more observations closer to the red dashed line.
+Two ways to improve upon the plug-in estimates shortfall are i) allowing for no-short-selling, so imposing one extra restiction in the optimization problem, and ii) naive portfolio allocation, such that all the assets have an equal weight.
+In the figure above we see the SR based on the naive portfolio weights (the yellow dashed line) and the SR based on no-short selling (the purple dashed line).
+
+We find that the two backtesting procedures does not seem to help in solving the plug-in estimates shortfall.
+In line with (Brandt 2010) we conclude that estimation of smaller moments affects the larger moments and vice-versa.
+Likewise, we have showed the poor finite sample properties, in that the SR of the plug-in estimates are substantially inferior to the true SR.
+Lastly, we showed in line with the theoretical argument of Green & Hollifield 1992, that portfolio constraints may actualy hurt the performance of plug-in estimates, which is the case for our analysis.
+Considering the CAPM's rejection in most literature, the results may stem from both inferior estimation methods and violations of CAPM assumptions. A suggestion is made to revisit the analysis using multifactor models like the APT model. 
