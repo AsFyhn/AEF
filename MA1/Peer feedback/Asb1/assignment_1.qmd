@@ -37,6 +37,8 @@ In the first part of this analysis we wish to calculate the minimum variance- an
 
 ```{r}
 #loading in the required packages
+install.packages("rmarkdown")
+install.packages("knitr")
 library(tidyverse)
 library(tidyquant)
 library(tibble)

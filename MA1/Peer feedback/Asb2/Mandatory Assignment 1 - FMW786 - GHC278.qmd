@@ -1,0 +1,578 @@
+---
+title: "Mandatory Assignment 1"
+author: "FMW786 & GHC278"
+date: "2024-03-08"
+execute: 
+  echo: false
+  warning: false
+format:
+  pdf: 
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - top=20mm
+      - left=20mm
+      - bottom=20mm
+      - right=20mm
+    cite-method: natbib
+    fontsize: 12pt
+bibliography: references.bib
+---
+
+# Efficient portfolios and estimation uncertainty:
+
+```{r}
+# Load necessary libraries
+library(tidyquant)
+library(tidyverse)
+library(scales)
+library(ggplot2)
+
+# We nee library(gridExtra) to plot simulations 
+if (!require(gridExtra)) {
+    install.packages("gridExtra", dependencies = TRUE)
+}
+library(gridExtra)
+```
+
+We retrieve the daily adjusted prices of every stock in the Dow Jones 30 index spanning from January 1st, 2000 to December 31st, 2023. Using the `TidyQuant` functions: `tq_index` to get the 30 tickers of the Dow Jones Index and `tq_get` to get their adjusted return history.
+
+```{r}
+# Define start and end dates
+start_date <- ymd("2000-01-01")
+end_date <- ymd("2023-12-31")
+
+# Retrieve symbols of Dow Jones 30 index constituents (excluding US Dollar)
+symbols <- tq_index("DOW") |> 
+  filter(company != "US DOLLAR")
+
+# Retrieve daily adjusted prices for the symbols within the specified date range
+index_prices <- tq_get(symbols,
+                       get = "stock.prices",
+                       from = start_date,
+                       to = end_date
+                       ) |> 
+# Group by symbol to find the number of trading days for each symbol and keep only those with the maximum number of trading days. 
+  group_by(symbol) |> 
+  mutate(n= n()) |>
+  ungroup() |>
+  filter(n == max(n)) |>
+  select(-n)
+
+# Compute monthly returns for each symbol
+returns <- index_prices |>
+  # Create a new column 'month' representing the month of each date
+  mutate(month = floor_date(date, "month")) |>
+  group_by(symbol, month) |>
+  # Calculate the monthly return as the ratio of current price to previous price minus 1
+  summarize(price = last(adjusted), .groups = "drop_last") |>
+  mutate(ret = price / lag(price) - 1) |>
+  drop_na(ret) |>
+  select(-price)
+```
+
+```{r}
+# Extract unique symbols from the 'symbol' column of the returns data frame
+unique_symbols <- unique(returns$symbol)
+
+# Count the number of unique symbols
+num_unique_symbols <- length(unique_symbols)
+```
+
+The number of unique symbols in the returns data frame is `r num_unique_symbols`, and we have thus removed the three tickers that did not have a continuous trading history for the entire sample period.
+
+For the `r num_unique_symbols` stocks, we compute the covariance matrix, $\Sigma$ and mean return, $\mu$ for each asset. With the risk-free rate of zero we find the sharpe ratio for each asset by normalizing with the asset's volatility. As we have monthly data the moments are annualized.
+
+```{r}
+# Convert returns data from long to wide format, with tickers as columns
+returns_matrix <- returns |>
+  pivot_wider(
+    names_from = symbol,
+    values_from = ret
+  ) |>
+  select(-month)
+
+# Compute the covariance matrix of the returns matrix
+sigma <- cov(returns_matrix)
+
+# Compute the mean return for each asset
+mu <- colMeans(returns_matrix)
+
+# Compute the sharpe ratio for each asset
+sharpe_ratio <- tibble(
+  Ticker = unique_symbols,  # Create a tibble with ticker symbols
+  Sharpe = sqrt(12) * mu / sqrt(diag(sigma))  # Compute sharpe ratio with annualized returns and no risk-free rate
+)
+
+# Arrange assets by sharpe ratio in descending order
+desc_sharpe_ratio <- sharpe_ratio |>
+  arrange(desc(Sharpe))
+```
+
+From the sharpe ratios, we find that the stock with the highest Sharpe-ratio is: `r sharpe_ratio |> filter(Sharpe == max(Sharpe)) |> pull(Ticker)`. The performance of the stock from
+
+```{r}
+# Create table with highest performing stock:
+sharpe_ratio |> 
+  filter(Sharpe == max(Sharpe)) |>
+  left_join(tibble(Ticker = colnames(returns_matrix), Return = mu * 12), by = "Ticker") |>
+  knitr::kable(caption = "Highest performing Sharpe-ratios and Return, annualized.", booktabs = TRUE, digits=3)
+```
+
+We define a function `compute_efficient_frontier` which take two inputs: a (N \times N) variance-covariance matrix `Sigma_est` and a vector `mu_est`.
+
+To begin, the function calculates the weights for the minimum variance portfolio (MVP), which represents the portfolio with the lowest possible risk given the selected assets.
+
+Next, the function proceeds to compute the weights for an efficient portfolio that delivers twice the expected return of the MVP. This step involves uses the covariance matrix and expected returns vector.
+
+Utilizing the principles of the two-mutual fund theorem, the function characterizes a range of portfolio weights representing combinations of the MVP weights and the efficient portfolio weights. These weights are systematically computed for various values of `c`, where `c` ranges from -0.1 to 1.2. The resulting data structure, `portfolio_matrix`, encapsulates the weights for each portfolio.
+
+Depending on the specified `return_type`, the function offers flexibility in the output format. It can return a tibble containing the weights for each portfolio (`"weights"`), a tibble with the expected return and standard deviation of each portfolio (`"efficient_frontier"`), as well as the weights of the tangency portfolio, using (`"tangency_weights"`).
+
+```{r}
+# Update the compute_efficient_frontier function to calculate sharpe ratios
+compute_efficient_frontier <- function(sigma_est, mu_est, periods_pr_year, return_type = "weights") {
+  # Function to compute the efficient frontier given a covariance matrix and expected returns
+  
+  # Arguments:
+  #   sigma_est: Covariance matrix of asset returns
+  #   mu_est: Vector of expected returns for each asset
+  #   periods_pr_year: Number of periods per year (e.g., 12 for monthly data)
+  #   return_type: Type of output to return ("weights" for portfolio weights,
+  #   "efficient_frontier" for the efficient frontier, "tangency_weights" for the tangency portfolio weights).
+  
+  # Returns:
+  #   If return_type is "weights", returns a tibble with columns for c (weights of the minimum variance portfolio),
+  #   followed by the weights of each asset in the portfolio for each value of c.
+  #   If return_type is "efficient_frontier", returns a tibble with columns for c (weights of the minimum variance portfolio),
+  #   followed by the expected return and standard deviation of each portfolio for each value of c.
+  #   If return_type is "tangency_weights", returns the weights of the tangency portfolio.
+  
+  # Computes the minimum variance portfolio
+  iota <- rep(1, ncol(sigma_est))
+  sigma_est_inv <- solve(sigma_est)
+  mvp_weights <- (sigma_est_inv %*% iota) / (sum(sigma_est_inv %*% iota))
+  
+  # Computes the efficient portfolio (with a return twice that of the minimum variance portfolio)
+  C <- as.numeric(t(iota) %*% sigma_est_inv %*% iota)
+  D <- as.numeric(t(iota) %*% sigma_est_inv %*% mu_est)
+  E <- as.numeric(t(mu_est) %*% sigma_est_inv %*% mu_est)
+  return_multiple <- 2
+  mu_bar <- return_multiple * t(mvp_weights) %*% mu_est
+  lambda_tilde <- as.numeric(2 * (mu_bar - D/C) / (E - D^2/C))
+  efp_weights <- mvp_weights + lambda_tilde/2 * (sigma_est_inv %*% mu_est - D * mvp_weights)
+  
+  # Calculate tangency portfolio weights
+  tangency_weights <- (sigma_est_inv %*% mu_est) / sum(sigma_est_inv %*% mu_est)
+  
+  # Two mutual fund theorem
+  c_values <- seq(from = -0.1, to = 1.2, by = 0.01)
+  ## Matrix including c and asset weights
+  portfolio_matrix <- matrix(nrow = length(c_values), ncol = length(mu_est) + 1)
+  colnames(portfolio_matrix) <- c("c", names(mu_est))
+  
+  ## Matrix including c and asset annualized returns / volatility
+  portfolio_results <- tibble(c = c_values, mu = NA, sd = NA)
+  
+  for (i in seq_along(c_values)) {
+    c <- c_values[i]
+    w <-  c * mvp_weights + (1 - c) * efp_weights
+    w <- as.numeric(w)
+    portfolio_matrix[i,] <- c(c, t(w))
+    
+    # Computes results
+    portfolio_results$mu[i] <- periods_pr_year %*% t(w) %*% mu_est
+    portfolio_results$sd[i] <- sqrt(periods_pr_year) * sqrt(t(w) %*% sigma_est %*%  w)
+  }
+  portfolio_weights <- as_tibble(portfolio_matrix)
+  
+  if (return_type == "weights") {
+    return(portfolio_weights)
+  } else if (return_type == "efficient_frontier") {
+    return(portfolio_results)
+  } else if (return_type == "tangency_weights") {
+    tangency_weights_tibble <- as_tibble(names(mu_est))
+    tangency_weights_tibble$Ticker <- (tangency_weights)
+    colnames(tangency_weights_tibble) <- c("Ticker", "Weight")
+    return(tangency_weights_tibble)
+  }
+}
+
+```
+
+```{r}
+# Weights for each stock depending on the relative allocation between the portfolios as given by c
+w <- compute_efficient_frontier(sigma,mu,periods_pr_year = 12,return_type = "weights")
+```
+
+Using the `ggplot2` package, the efficient frontier is plotted, with the x-axis representing the annualized standard deviation and the y-axis representing the annualized expected return. Each point on the plot corresponds to a specific portfolio configuration, with the MVP-portfolio and the efficient portfolio that delivers twice the return of the MVP highlighted, corresponding to extreme values of `c` (0 and 1), and smaller points denoting individual assets within the portfolio.
+
+```{r, fig.align='center', efficient-frontier-plot, fig.cap="Efficient frontier for DOW index constituents"}
+# Compute the efficient frontier with the given covariance matrix and expected returns
+res <- compute_efficient_frontier(sigma, mu, periods_pr_year = 12, return_type = "efficient_frontier")
+
+length_year <- 12
+
+# Plot the efficient frontier using ggplot2
+res |>
+  ggplot(aes(x = sd, y = mu)) +  # Define x and y aesthetics for the plot
+  geom_point() +  # Add points to the plot
+  geom_point(  # Add points for specific portfolios
+    data = res |> filter(c %in% c(0, 1)),
+    size = 4
+  ) +
+  geom_point(  # Add points for individual assets
+    data = tibble(
+      mu = length_year * mu,       
+      sd = sqrt(length_year) * sqrt(diag(sigma))
+    ),
+    aes(y = mu, x = sd), size = 1
+  ) +
+  labs(  # Set plot labels and title
+    x = "Annualized standard deviation",
+    y = "Annualized expected return",
+    title = NULL,
+    caption = NULL
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = percent) +  # Format x-axis labels as percentages
+  scale_y_continuous(labels = percent)  # Format y-axis labels as percentages
+```
+
+Now we want to find the efficient tangency portfolio weights $\omega_{tgc}$, with a risk-free rate of zero, based on our parameters, $\mu$ and $\Sigma$.\
+We have implemented the solution for the weights to the sharpe ratio maximizing problem, $\omega_{tgc}$ = $\frac{{\Sigma^{-1} \cdot (\mu-r_f\cdot 1)}}{{ 1' \Sigma^{-1} \cdot (\mu-r_f\cdot 1)}}$ in the function `compute_efficient_frontier`, and thus compute the tangency portfolio weights. These are given by:
+
+```{r, fig.align='center', tangency-portfolio-weights-plot, fig.cap="The weights of the Efficient Tangency Portfolio"}
+# Retrieve tangency portfolio weights
+w_tgc <- compute_efficient_frontier(sigma, mu, periods_pr_year = 12, return_type = "tangency_weights")
+
+# Create the plot with rotated text within each bar
+ggplot(w_tgc, aes(x = Ticker, y = Weight)) +
+  geom_bar(stat = "identity", fill = "skyblue", width = 0.7) +
+  geom_text(aes(label = round(Weight, 3)), angle = 90, vjust = 0.5, color = "black", size = 3) +
+  labs(title = NULL,
+       x = "Ticker",
+       y = "Weight") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5))
+```
+
+Furthermore, the annualized mean return, standard deviation, and sharpe ratio of the tangency portfolio is given by:
+
+```{r, fig.align='center'}
+# Calculate annualized mean return, standard deviation, and sharpe ratio of the tangency portfolio
+annualized_tgc_mu <- sum(w_tgc$Weight * mu) * length_year 
+annualized_tgc_sd <- sqrt(t(w_tgc$Weight) %*% sigma %*% w_tgc$Weight) * sqrt(length_year)
+tgc_sharpe <- annualized_tgc_mu / annualized_tgc_sd
+
+# Create a data frame for tangency portfolio statistics
+tgc_stats <- data.frame(
+  Measure = c("Mean Return", "Standard Deviation", "Sharpe Ratio"),
+  Value = round(c(annualized_tgc_mu, annualized_tgc_sd, tgc_sharpe),3) 
+)
+
+# Display the tangency portfolio statistics in a kable table
+knitr::kable(tgc_stats, caption = "Tangency Portfolio Statistics, annualized", format = "markdown")
+
+```
+
+Thus we can see, that the sharpe ratio of the tangency portfolio, which is `r tgc_stats[tgc_stats$Measure == "Sharpe Ratio", "Value"]`, is significantly higher than that of the highest performing individual stock, which is `r sharpe_ratio |> filter(Sharpe == max(Sharpe)) |> pull(Ticker)` . This is to be expected as the tangency portfolio is constructed by optimizing the trade-off between risk and return across multiple assets. As `r sharpe_ratio |> filter(Sharpe == max(Sharpe)) |> pull(Ticker)` is included in this portfolio, we can always get at least a sharpe ratio of `r sharpe_ratio |> filter(Sharpe == max(Sharpe)) |> pull(Sharpe) |> round(3)`, if there were no value in diversifying by only holding `r sharpe_ratio |> filter(Sharpe == max(Sharpe)) |> pull(Ticker)`.
+
+We can observe that the tangency portfolio weights allocate significant proportions to certain stocks, indicating a potential lack of diversification. Additionally, it's important to recognize that the mean returns and variance-covariance matrix used for optimization are subject to estimation uncertainty, which can introduce additional risk and potential deviation from expected outcomes. Thus, the implementation could be very sensitive to estimation uncertainty.
+
+## The efficient frontier under estimation uncertainty
+
+Next we wish to simulate efficient frontiers under estimation uncertainty. We assume that the returns are identically and independently multivariate normal distributed with a vector of expected returns, $\mu$ and the variance-covariance matrix, $\Sigma$. We simulate hypothetical return samples and compute the sample moments $\hat{\mu}$ and $\hat{\Sigma}$. From the estimated efficient frontiers we can analyze how much they deviate from the true efficient frontier.
+
+First, we define a function `simulate_returns` which generates a matrix of simulated returns for a specified number of periods and distribution. The generated hypothetical returns are i.i.d. $N(\mu,\Sigma)$ and the sample moments are thus the expected returns, $\hat{\mu}$ and variance-covariance matrix, $\hat{\Sigma}$. Each column corresponds to one of the assets and each row the returns of a single period. Our simulated returns consider 200 periods.
+
+```{r}
+# Function for simulating normal distributed returns with mu and sigma
+simulate_returns <- function(periods = 200, 
+                             expected_returns = mu,
+                             covariance_matrix = sigma){
+MASS::mvrnorm(n = periods, expected_returns, covariance_matrix)
+}
+
+```
+
+```{r}
+# Seed makes the following reproducible
+set.seed(2024)
+
+# Simulate returns
+sim_returns <- simulate_returns(periods = 200) 
+
+# Compute the covariance matrix of the returns matrix
+sim_sigma <- cov(sim_returns)
+
+# Compute the mean return for each asset
+sim_mu <- colMeans(sim_returns)
+
+# Computes the efficient frontier of the simulated mu and sigma
+sim_res <- compute_efficient_frontier(sim_sigma, sim_mu, length_year, return_type = "efficient_frontier")
+```
+
+We can now plot the simulated efficient frontier using data from `simulate_returns`.
+
+```{r, fig.align='center', efficient-frontier-estimation-uncertainty, fig.cap="The Efficient Frontier under Estimation Uncertainty", fig.width=4, fig.height=3}
+combined_data <- bind_rows(
+  res |> mutate(DataType = "True Efficient Frontier"),
+  sim_res |> mutate(DataType = "Simulated Efficient Frontier")
+)
+
+ggplot(combined_data, aes(x = sd, y = mu, color = DataType)) +
+  geom_point() +
+  scale_color_manual(values = c("True Efficient Frontier" = "black", "Simulated Efficient Frontier" = "blue"), 
+                     name = NULL) +
+  labs(
+    x = "Annualized standard deviation",
+    y = "Annualized expected return",
+    title = NULL
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(legend.position = c(0.70, 0.2)) 
+
+```
+
+Upon examining the above figure, we observe that the simulated efficient frontier diverges from the 'true' efficient frontier. Notably, the simulated frontier seems to dominate the 'true' frontier, suggesting that the simulation may overestimate the returns for a given level of risk. This discrepancy has significant implications for portfolio construction, potentially leading to misallocation of funds across the `r num_unique_symbols` assets under consideration. This phenomenon may stem from a limited sample size; a hypothesis supported by the statistical principle of the law of large numbers which posits that estimation errors decrease as sample size increases. Hence, the deviation between the simulated and 'true' frontiers might be expected to diminish with a larger dataset that offers a more robust estimate of the underlying return distributions.
+
+We now extend our analysis by simulating 100 different efficient frontiers for two separate cases: one with the number of periods equal to 200, and the other with 10,000 periods.
+
+```{r}
+# Function to run the simulation and plotting process
+simulations <- function(num_simulations = 100, periods = 200, return_type = "plot", sigma_true = sigma, mu_true = mu, periods_pr_year = length_year) {
+  # Store all simulated frontiers
+  all_simulated_returns <- list()
+  all_frontiers <- list()
+
+  # Theoretically optimal frontier (ensure 'mu', 'sigma', and 'length_year' are defined)
+  optimal_frontier <- compute_efficient_frontier(sigma_est = sigma_true, mu_est = mu_true, periods_pr_year = periods_pr_year, return_type = "efficient_frontier")
+
+  # Run simulations
+  for (i in 1:num_simulations) {
+    set.seed(i)
+    
+    # Simulate returns
+    simulated_returns <- simulate_returns(periods = periods, expected_returns = mu_true, covariance_matrix = sigma_true)
+    
+    # Store simulated returns
+    all_simulated_returns[[i]] <- as.data.frame(simulated_returns) 
+    
+    # Calculate sample estimates
+    mu_est <- colMeans(simulated_returns)
+    sigma_est <- cov(simulated_returns) 
+    
+    # Compute efficient frontier for the simulated data (use correct periods per year)
+    sim_frontier <- compute_efficient_frontier(sigma_est = sigma_est, mu_est = mu_est, periods_pr_year = periods_pr_year, return_type = "efficient_frontier")
+    all_frontiers[[i]] <- sim_frontier
+  }
+
+  # Combine all simulation returns into one data frame
+  combined_simulated_returns <- bind_rows(all_simulated_returns, .id = "Simulation") %>%
+    mutate(Simulation = as.factor(Simulation)) 
+  
+  # Combine all frontiers into one data frame
+  combined_frontiers <- bind_rows(all_frontiers, .id = "Simulation") %>%
+    mutate(Simulation = as.factor(Simulation))
+  
+
+  # Plot the simulated frontiers
+  p <- ggplot() +
+    geom_point(data = combined_frontiers, aes(x = sd, y = mu, group = Simulation, color = Simulation), alpha = 0.5, size = 0.3) +
+    geom_point(data = optimal_frontier, aes(x = sd, y = mu), color = "black", size = 0.3) +
+    theme_minimal() +
+    theme(legend.position = "none") +  # Hide the legend for clarity
+    scale_x_continuous(labels = percent) +
+    scale_y_continuous(labels = percent) +
+    labs(
+      x = "Annualized standard deviation",
+      y = "Annualized expected return"
+      #, title = "Comparison of Simulated and Theoretical Efficient Frontiers"
+    )
+  
+  # Return the plot
+  if (return_type == "plot") {
+    return(p)
+  } else if (return_type == "simulations") {
+    return(combined_simulated_returns)
+  }
+}
+
+```
+
+```{r, fig.align='center', efficient-frontier-DGP, fig.cap="DGP with 100 simulated Efficient Frontiers"}
+x_lim <- c(0.08,0.15)
+y_lim <- c(0,0.4)
+
+# Assuming the simulations function returns a ggplot object
+plot_sim_periods200 <- simulations(periods = 200) + 
+  coord_cartesian(xlim = x_lim, ylim = y_lim) +
+  labs(title = "200-periods returns") +
+  theme(plot.title = element_text(hjust = 0.5, size=12)) 
+
+plot_sim_periods10000 <- simulations(periods = 10000) + 
+  coord_cartesian(xlim = x_lim, ylim = y_lim) +
+  labs(title = "10.000-periods returns") +
+  theme(plot.title = element_text(hjust = 0.5, size=12)) +
+  annotate("text", x = 0.9, y = 0.9, label = "True Efficient Frontier", 
+           hjust = 1, vjust = 1, color = "black", size = 5)
+
+grid.arrange(plot_sim_periods200, plot_sim_periods10000, ncol = 2) 
+```
+
+In the 200-period simulations, there is a noticeable tendency for the simulated efficient frontiers to outperform the 'true' efficient frontier, indicated by the black line. This divergence may be attributable to our underlying assumption that the data-generating process follows an i.i.d. $N(\mu,\Sigma)$. This assumption presumes symmetry in the error terms, which might not accurately reflect the actual return distributions that could exhibit skewness and non-normality.
+
+From the 10.000 periods returns, we see that the variability in the efficient frontiers disappear. Additionally the 'true' efficient frontier seems to be in the average. Thus, if the DGP is correctly normal-distributed estimation uncertainty will decrease in the sample size.
+
+Considering the above results for the efficient frontier, we now turn toward portfolio performance under estimation uncertainty.
+
+## Portfolio performance under estimation uncertainty
+
+In this code segment, we conduct a Monte Carlo simulation to examine the behavior of tangency portfolio weights and sharpe ratios under estimation uncertainty. We begin by running simulations to generate synthetic return data, simulating potential real-world scenarios. Two empty data frames are initialized to store the results: `tangency_weights_df` holds tangency portfolio weights for each simulation, while `sharpe_ratios_df` stores the corresponding sharpe ratios. Within a loop for each simulation, we extract returns data and estimate parameters, including the covariance matrix and mean returns. Tangency portfolio weights are calculated using the `compute_efficient_frontier` function. We then compute the annualized sharpe ratio of the tangency portfolio using: $\sqrt{12} \frac{ \hat{\omega}'_{\text{tgc}}\mu}{\sqrt{\hat{\omega}_{\text{tgc}}'\Sigma \hat{\omega}'_{\text{tgc}}}}$. Results, including weights and sharpe ratios, are stored in the respective data frames.
+
+```{r}
+# Run the simulation
+simulation_result <- simulations(return_type="simulations") # periods = 200 pr. default
+
+# Initialize empty data frames to store tangency portfolio weights and sharpe ratios for each simulation
+tangency_weights_df_200 <- data.frame(matrix(NA, ncol = length(unique_symbols) + 1, nrow = 100))
+colnames(tangency_weights_df_200) <- c("Simulation", unique_symbols)
+
+sharpe_ratios_df_200 <- data.frame(matrix(NA, ncol = 2, nrow = 100))
+colnames(sharpe_ratios_df_200) <- c("Simulation", "Sharpe Ratio")
+
+# Loop over each simulation
+for (i in 1:100) {
+  # Extract simulated returns for the current simulation
+  sim_returns <- simulation_result[simulation_result$Simulation == i, -1]
+
+  # Compute covariance matrix and expected returns for the current simulation
+  sim_sigma_200 <- cov(sim_returns)
+  sim_mu_200 <- colMeans(sim_returns)
+
+  # Compute tangency portfolio weights for the current simulation
+  tangency_weights_200 <- compute_efficient_frontier(sigma = sim_sigma_200, mu = sim_mu_200, periods_pr_year = length_year, return_type = "tangency_weights")
+  
+  # Calculate annualized mean return, standard deviation, and sharpe ratio of the tangency portfolio. Note mu and sigma is the true values
+  annualized_tgc_mu_200 <- sum(tangency_weights_200$Weight * mu) 
+  annualized_tgc_sd_200 <- sqrt(t(tangency_weights_200$Weight) %*% sigma %*% tangency_weights_200$Weight)
+  tgc_sharpe_200 <-  sqrt(length_year) * annualized_tgc_mu_200 / annualized_tgc_sd_200
+  
+  # Store tangency portfolio weights for the current simulation in the data frame
+  tangency_weights_df_200[i, 1] <- i
+  tangency_weights_df_200[i, -1] <- tangency_weights_200$Weight
+  
+  # Store sharpe ratio for the current simulation in the data frame
+  sharpe_ratios_df_200[i, 1] <- i
+  sharpe_ratios_df_200[i, 2] <- tgc_sharpe_200
+}
+
+tangency_weights <- compute_efficient_frontier(sigma = sigma, mu = mu, periods_pr_year = length_year, return_type = "tangency_weights")
+
+# Compute the average Sharpe Ratio from the simulations
+average_sharpe_200 <- mean(sharpe_ratios_df_200$`Sharpe Ratio`)
+```
+
+Below we show a histogram of the simulated sharpe ratio's with the sharpe ratio of the tangency portfolio with the true parameters, $\mu$ and $\sigma$:
+
+```{r}
+# Run the simulation with 10000 periods
+simulation_result_10000 <- simulations(num_simulations = 100, periods = 10000, return_type = "simulations")
+
+# Initialize empty data frames to store tangency portfolio weights and sharpe ratios for each simulation
+tangency_weights_df_10000 <- data.frame(matrix(NA, ncol = length(unique_symbols) + 1, nrow = 100))
+colnames(tangency_weights_df_10000) <- c("Simulation", unique_symbols)
+
+sharpe_ratios_df_10000 <- data.frame(matrix(NA, ncol = 2, nrow = 100))
+colnames(sharpe_ratios_df_10000) <- c("Simulation", "Sharpe Ratio")
+
+# Loop over each simulation
+for (i in 1:100) {
+  # Extract simulated returns for the current simulation
+  sim_returns_10000 <- simulation_result_10000[simulation_result$Simulation == i, -1]
+
+  # Compute covariance matrix and expected returns for the current simulation
+  sim_sigma_10000 <- cov(sim_returns_10000)
+  sim_mu_10000 <- colMeans(sim_returns_10000)
+
+  # Compute tangency portfolio weights for the current simulation
+  tangency_weights_10000 <- compute_efficient_frontier(sigma = sim_sigma_10000, mu = sim_mu_10000, periods_pr_year = length_year, return_type = "tangency_weights")
+  
+  # Calculate annualized mean return, standard deviation, and sharpe ratio of the tangency portfolio. Note mu and sigma is the true values
+  annualized_tgc_mu_10000 <- sum(tangency_weights_10000$Weight * mu) 
+  annualized_tgc_sd_10000 <- sqrt(t(tangency_weights_10000$Weight) %*% sigma %*% tangency_weights_10000$Weight)
+  tgc_sharpe_10000 <-  sqrt(length_year) * annualized_tgc_mu_10000 / annualized_tgc_sd_10000
+  
+  # Store tangency portfolio weights for the current simulation in the data frame
+  tangency_weights_df_10000[i, 1] <- i
+  tangency_weights_df_10000[i, -1] <- tangency_weights_10000$Weight
+  
+  # Store sharpe ratio for the current simulation in the data frame
+  sharpe_ratios_df_10000[i, 1] <- i
+  sharpe_ratios_df_10000[i, 2] <- tgc_sharpe_10000
+}
+
+# Compute the average Sharpe Ratio from the simulations
+average_sharpe_10000 <- mean(sharpe_ratios_df_10000$`Sharpe Ratio`)
+
+```
+
+```{r, fig.align='center', fig.cap="Distribution of Sharpe Ratios with 200 and 10.000 periods DGP"}
+
+# plot_figure_dgp_200
+plot_figure_dgp_200 <- ggplot(sharpe_ratios_df_200, aes(x = `Sharpe Ratio`)) +
+  geom_histogram(bins = 30, fill = 'skyblue', alpha = 0.7) +
+  geom_vline(aes(xintercept = tgc_sharpe), 
+             color = "red", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = average_sharpe_200), 
+             color = "black", linetype = "dashed", size = 1) +
+  labs(title = "",
+       subtitle = "",
+       x = "Sharpe Ratio",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), # Center the main title
+        plot.subtitle = element_text(hjust = 0.5), # Center the subtitle
+        legend.position = "none") + # Remove the legend
+  ggtitle("200-periods returns")
+
+#plot_figure_dgp_10000
+plot_figure_dgp_10000 <- ggplot(sharpe_ratios_df_10000, aes(x = `Sharpe Ratio`)) +
+  geom_histogram(bins = 30, fill = 'skyblue', alpha = 0.7) +
+  geom_vline(aes(xintercept = tgc_sharpe), 
+             color = "red", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = average_sharpe_10000), 
+             color = "black", linetype = "dashed", size = 1) +
+  labs(title = "",
+       subtitle = "",
+       x = "Sharpe Ratio",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), # Center the main title
+        plot.subtitle = element_text(hjust = 0.5), # Center the subtitle
+        legend.position = "none") + # Remove the legend
+  ggtitle("10,000-periods returns")
+
+# Combine figures 
+combined_plot <- grid.arrange(plot_figure_dgp_200, plot_figure_dgp_10000, ncol = 2, top = "Distribution of Sharpe Ratios (200 & 10,000 periods DGP)", 
+                               bottom = "Red line: Tangency Sharpe Ratio | Black line: Average Sharpe Ratio")
+
+# Display the combined plot
+invisible(combined_plot)
+```
+
+From the plotted histogram, it is obvious, that the share ratio of the tangency portfolio with the true parameters lies far above the average of the simulated sharpe ratios. The difference is `r abs(round(average_sharpe_200 - tgc_stats[tgc_stats$Measure == "Sharpe Ratio", "Value"], 3))`. Clearly, this shows that estimation error can have big consequences for the implementation of the portfolio. Of further interest to be studied is, if a larger sample will reduce this uncertainty.
+
+We show, that by increasing the sample period from 200 to 10.000, the simulated average sharpe ratio now moves much closer to that of the efficient tangency portfolio based on the true parameters. The difference falls from `r abs(round(average_sharpe_200 - tgc_stats[tgc_stats$Measure == "Sharpe Ratio", "Value"], 3))` to `r abs(round(average_sharpe_10000 - tgc_stats[tgc_stats$Measure == "Sharpe Ratio", "Value"], 3))`. Proving that the simulation sample size is very important, as it affects the accuracy and reliability of the estimated parameters and consequently the performance metrics of the portfolio. With a larger sample size, the estimation of expected returns and covariance matrix becomes more precise, leading to a distribution of simulated sharpe ratios that better reflects the true characteristics of the portfolio.
+
+## Alternative Portfolio Allocation Strategies
+
+We note that as estimation uncertainty seems to be a significant issue, we could implement two estimation-free alternative allocation strategies.
+
+1.  An equally weighted portfolio does not suffer from estimation uncertainty, and if that is a major concern, then an equally weighted portfolio could be an option. However, it is unlikely that this would outperform the tangency portfolio, as it seems unreasonable to assume that historical covariance has no correlation with future covariance.
+2.  A market-weighted portfolio is another approach to address this issue, with the added bonus that, in theory, the tangency portfolio should be equal to the market portfolio. Therefore, theoretically, it should be as good or better than the tangency portfolio, as the market portfolio would be constructed with more sophisticated models that include expectations of future variance-covariance matrices.
+
+Finally, it has been shown that variance-covariance matrices are very numerically unstable, which adds to the estimation uncertainty. One way to address this is to use covariance-shrinkage methods, which provide a biased but more stable estimator of variance-covariance matrices, potentially reducing estimation uncertainty. (We need a source for this and to implement it in the code).
