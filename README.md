@@ -11,3 +11,6 @@ pip update -r requirement.txt
 
 When in doubt with the hopeless plotnine which has shitty documentation find help below: 
 https://f0nzie.github.io/rmarkdown-python-plotnine/aesthetics-and-geometry.html
+
+Help to Machine Learning look at: 
+https://online.stat.psu.edu/stat508/lesson/5/
