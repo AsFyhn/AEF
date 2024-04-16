@@ -1,28 +1,3 @@
----
-title: "Mandatory Assignment 2"
-author: "Asbjørn Fyhn & Emil Beckett Kolko"
-date: "2024-03-08"
-execute: 
-  echo: false
-  warning: false
-  output: false
-jupyter: python3
-format:
-  pdf: 
-    number-sections: true
-    colorlinks: true
-    geometry:
-      - top=20mm
-      - left=20mm
-      - bottom=20mm
-      - right=20mm
-    cite-method: natbib
-    fontsize: 12pt
----
-
-**Exercise 1:**
-In this exercise we load all the necessary packages and data to perform the mandatory assignment.
-```{python}
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -47,11 +22,8 @@ factors_ff3_monthly = pd.read_sql_query(
   con=tidy_finance,
   parse_dates={"month"}
 )
-```
 
-**Exercise 2:**
-When computing the momentum we use the market capitalization as opposed to the stock price. The benefit of doing so, is that our computations are not affected by events that increase or decrease the number of outstanding stocks such as stock issuances or buybacks. If we had used the stock price in our computations as opposed to the market capitalization, such events would have artificially increased or decreased our calculated momentum.
-```{python}
+#Exercise 2
 #Transforming the crsp_monthly dataset to contain mktcap_lag_12
 mktcap_lag_12 = (crsp_monthly
   .assign(month=lambda x: x["month"]+pd.DateOffset(months=12))
@@ -70,12 +42,8 @@ data_for_sorts['Mom_12'] = 100 * (data_for_sorts['mktcap_lag'] - data_for_sorts[
 
 #Printing the first 24 rows of the dataset to check if the data transformation was successful
 print(data_for_sorts.head(24))
-```
 
-**Exercise 3:**
-The equal-weighted average values of the 12-month momentum (Average_Mom_12) and market capitalization (Average_mktcap) is shown in the table below:
-```{python}
-# | output : true
+#Exercise 3
 #Bullet 1
 #Creating the decile groups for the 12-month momentum
 
@@ -84,7 +52,6 @@ data_for_sorts['Mom_12_decile'] = pd.qcut(data_for_sorts['Mom_12'], q=10, labels
 #Sorting the data by decile and month
 sorted_data = data_for_sorts.sort_values(
     by=['Mom_12_decile', 'month'])
-
 #Bullet 2
 #Calculating the equal-weighted average values of Mom_12 and mc for each of the ten portfolios
 average_return = (
@@ -96,8 +63,7 @@ average_return = (
     }))
     .reset_index()
 )
-#Printing the values
+
 print(average_return)
 
 #Bullet 3
-```
