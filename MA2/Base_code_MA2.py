@@ -71,16 +71,74 @@ average_return = (
     .reset_index()
 )
 
-# rounding the values to 2 decimals
-average_return = average_return.round(2)
 
 # Specifiying the headers for the table
-headers = [
-    "Momentum decile",
-    "Average momentum",
-    "Average market cap",
-]
-# Printing the table
-print(tabulate.tabulate(average_return, headers, tablefmt="simple", showindex=False))
+headers = {'Mom_12_decile':"Momentum decile",
+    'Average_Mom_12':"Average momentum",
+    'Average_mktcap':"Average market cap",
+}
+average_return.rename(columns=headers,inplace=True)
+# # Printing the table
+# print(tabulate.tabulate(average_return, headers, tablefmt="simple", showindex=False))
+
+for col in list(headers.values()):
+  average_return[col] = average_return[col].astype(float)
+
+# Format the DataFrame style
+formatted_dfAgg = average_return.style.format(
+    precision=2,
+    na_rep="", 
+)
+formatted_dfAgg.hide()
+formatted_dfAgg
 
 # Bullet 3
+# Computing the value weighted excess returns for each of the ten portfolios
+Vw_excess_returns = (
+    sorted_data.groupby(["Mom_12_decile"])
+    .apply(
+        lambda x: pd.Series(
+            {
+                "Decile_portfolio_excess_return": np.average(x["ret_excess"], weights=x["mktcap"])
+            }
+        )
+    )
+    .reset_index()
+)
+
+# Calculating the CAPM alpha for each of the ten portfolios
+# Merging the data with the factors_ff3_monthly dataset
+data_for_sorts = data_for_sorts.merge(
+    factors_ff3_monthly, how="inner", on="month"
+)
+# Defining the linear regression function
+def lin_reg(x,y):
+    reg = sm.OLS(y, sm.add_constant(x)).fit()
+    return reg.params["const"], reg.tvalues['const'], reg.pvalues['const']
+
+# Running the CAPM regression for each of the ten portfolios
+CAPM_alphas = (
+    data_for_sorts.groupby(["Mom_12_decile"])
+    .apply(
+        lambda x: lin_reg(x["mkt_excess"], x["ret_excess"])
+    )
+    .reset_index()
+)
+CAPM_alphas['alpha'] = [x[0] for x in CAPM_alphas[0]]
+CAPM_alphas['t-value of Alpha calc'] = [x[1] for x in CAPM_alphas[0]]
+CAPM_alphas['p-value of Alpha calc'] = [x[2] for x in CAPM_alphas[0]]
+CAPM_alphas.drop(columns=[0], inplace=True)
+
+
+# Merging the calculations to one dataset to present it in a table
+Alphas_excessret = Vw_excess_returns.merge(
+    CAPM_alphas, how="left", on="Mom_12_decile"
+)
+
+# Format the DataFrame style
+formatted_dfAgg = Alphas_excessret.style.format(
+    precision=2,
+    na_rep="", 
+)
+formatted_dfAgg.hide()
+formatted_dfAgg
