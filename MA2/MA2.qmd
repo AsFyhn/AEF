@@ -27,6 +27,7 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import statsmodels.api as sm
+import tabulate
 
 from plotnine import *
 from mizani.formatters import percent_format
@@ -96,8 +97,17 @@ average_return = (
     }))
     .reset_index()
 )
-#Printing the values
-print(average_return)
 
+# rounding the values to 2 decimals
+average_return = average_return.round(2)
+
+# Specifiying the headers for the table
+headers = [
+    "Momentum decile",
+    "Average momentum",
+    "Average market cap",
+]
+# Printing the table
+print(tabulate.tabulate(average_return, headers, tablefmt="simple", showindex=False))
 #Bullet 3
 ```
