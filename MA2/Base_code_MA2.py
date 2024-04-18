@@ -171,29 +171,23 @@ plot_momentum_portfolios_summary = (
   theme(legend_position="none")
 )
 plot_momentum_portfolios_summary.draw()
-
+np.logspace(-4,4,40)
 # Analyzing the momentum strategy
-momentum_longshort = (sorted_data
-  .assign(
-    portfolio=lambda x: (
-      x["Mom_12_decile"].apply(
-        lambda y: "high" if y == x["Mom_12_decile"].max()
-        else ("low" if y == x["Mom_12_decile"].min()
-        else y)
-      )
-    )
+data_for_sorts['portfolio'] = np.where(data_for_sorts["Mom_12_decile"]==1,'low',np.where(data_for_sorts["Mom_12_decile"]==10,'high','neutral'))
+
+mom_ls = (data_for_sorts
+          .query("portfolio in ['low', 'high']")
+          .pivot_table(index="month", columns="portfolio", values="ret_excess")
+          .assign(long_short=lambda x: x["high"]-x["low"])
+          .merge(factors_ff3_monthly, how="left", on="month")
   )
-  .query("Mom_12_decile in ['low', 'high']")
-  .pivot_table(index="month", columns="Mom_12_decile", values="ret")
-  .assign(long_short=lambda x: x["high"]-x["low"])
-  .merge(factors_ff3_monthly, how="left", on="month")
-)
+
 model_fit = (sm.OLS.from_formula(
     formula="long_short ~ 1", 
-    data=momentum_longshort
+    data=mom_ls
   )
-  .fit(cov_type="HAC", cov_kwds={"maxlags": 1})
+  .fit(cov_type="HAC", cov_kwds={"maxlags": 60})
 )
 prettify_result(model_fit)
 
-model_fit.summary()
+

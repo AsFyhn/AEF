@@ -1,7 +1,7 @@
 ---
 title: "Mandatory Assignment 2"
 author: "Asbjørn Fyhn & Emil Beckett Kolko"
-date: "2024-03-08"
+date: "2024-04-019"
 execute: 
   echo: false
   warning: false
@@ -216,5 +216,26 @@ plot_momentum_portfolios_summary = (
 )
 plot_momentum_portfolios_summary.draw()
 ```
+```{python}
+# | output : true
+data_for_sorts['portfolio'] = np.where(data_for_sorts["Mom_12_decile"]==1,'low',np.where(data_for_sorts["Mom_12_decile"]==10,'high','neutral'))
 
- Low momentum stocks offer a negative alpha whereas high momemtum stocks offer a positive alpha. This is not consistent with the CAPM theory and represents an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
+mom_ls = (data_for_sorts
+          .query("portfolio in ['low', 'high']")
+          .pivot_table(index="month", columns="portfolio", values="ret_excess")
+          .assign(long_short=lambda x: x["high"]-x["low"])
+          .merge(factors_ff3_monthly, how="left", on="month")
+  )
+
+model_fit = (sm.OLS.from_formula(
+    formula="long_short ~ 1", 
+    data=mom_ls
+  )
+  .fit(cov_type="HAC", cov_kwds={"maxlags": 60})
+)
+prettify_result(model_fit)
+```
+
+We see that the stocks with lowest momentum offers a very high alpha compared to the rest of the stocks. This can be explained by...
+
+Apart from the lowest decile stocks, low momentum stocks generally offer negative alpha whereas high momemtum stocks offer a positive alpha. This is not consistent with the CAPM theory and represents an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
