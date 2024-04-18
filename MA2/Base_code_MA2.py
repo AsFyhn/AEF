@@ -1,4 +1,5 @@
 import pandas as pd
+import pandas as pd
 import numpy as np
 import sqlite3
 import statsmodels.api as sm
@@ -49,28 +50,26 @@ data_for_sorts["Mom_12"] = (
 print(data_for_sorts.head(24))
 
 # Exercise 3
-# Bullet 1
-# Creating the decile groups for the 12-month momentum
+#Bullet 1
+#Creating the decile groups for the 12-month momentum
 
-data_for_sorts["Mom_12_decile"] = pd.qcut(data_for_sorts["Mom_12"], q=10, labels=False)
+data_for_sorts['Mom_12_decile'] = pd.qcut(data_for_sorts['Mom_12'], q=10, labels=False) + 1
 
-# Sorting the data by decile and month
-sorted_data = data_for_sorts.sort_values(by=["Mom_12_decile", "month"])
-# Bullet 2
-# Calculating the equal-weighted average values of Mom_12 and mc for each of the ten portfolios
+#Sorting the data by decile and month
+sorted_data = data_for_sorts.sort_values(
+    by=['Mom_12_decile', 'month'])
+
+#Bullet 2
+#Calculating the equal-weighted average values of Mom_12 and mc for each of the ten portfolios
 average_return = (
-    sorted_data.groupby(["Mom_12_decile"])
-    .apply(
-        lambda x: pd.Series(
-            {
-                "Average_Mom_12": np.mean(x["Mom_12"]),
-                "Average_mktcap": np.mean(x["mktcap"]),
-            }
-        )
-    )
+    sorted_data
+    .groupby(['Mom_12_decile'])
+    .apply(lambda x: pd.Series({
+        'Average_Mom_12': np.mean(x['Mom_12']),
+        'Average_mktcap': np.mean(x['mktcap'])
+    }))
     .reset_index()
 )
-
 
 # Specifiying the headers for the table
 headers = {'Mom_12_decile':"Momentum decile",
@@ -85,13 +84,16 @@ for col in list(headers.values()):
   average_return[col] = average_return[col].astype(float)
 
 # Format the DataFrame style
-formatted_dfAgg = average_return.style.format(
-    precision=2,
-    na_rep="", 
-)
+formatted_dfAgg = average_return.style.format({
+    'Momentum decile': '{:.0f}',  # No decimals
+    'Average momentum': '{:.2f}',  # Two decimal places
+    'Average market cap': '{:.2f}',  # Two decimal places
+    'na_rep': "" 
+})
 formatted_dfAgg.hide()
 formatted_dfAgg
 
+# Bullet 3
 # Bullet 3
 # Computing the value weighted excess returns for each of the ten portfolios
 Vw_excess_returns = (
@@ -124,9 +126,9 @@ CAPM_alphas = (
     )
     .reset_index()
 )
-CAPM_alphas['alpha'] = [x[0] for x in CAPM_alphas[0]]
-CAPM_alphas['t-value of Alpha calc'] = [x[1] for x in CAPM_alphas[0]]
-CAPM_alphas['p-value of Alpha calc'] = [x[2] for x in CAPM_alphas[0]]
+CAPM_alphas['Alpha'] = [x[0] for x in CAPM_alphas[0]]
+CAPM_alphas['t-statistic'] = [x[1] for x in CAPM_alphas[0]]
+CAPM_alphas['p-value'] = [x[2] for x in CAPM_alphas[0]]
 CAPM_alphas.drop(columns=[0], inplace=True)
 
 
@@ -135,10 +137,63 @@ Alphas_excessret = Vw_excess_returns.merge(
     CAPM_alphas, how="left", on="Mom_12_decile"
 )
 
+# Specifiying the headers for the table
+headers_v2 = {'Mom_12_decile':"Momentum decile",
+    'Decile_portfolio_excess_return':"Excess return",
+}
+# Renaming the headers
+Alphas_excessret.rename(columns=headers_v2,inplace=True)
+
+# Putting headers in place
+for col in list(headers_v2.values()):
+  Alphas_excessret[col] = Alphas_excessret[col].astype(float)
+
 # Format the DataFrame style
-formatted_dfAgg = Alphas_excessret.style.format(
-    precision=2,
-    na_rep="", 
+formatted_dfAgg_v2 = Alphas_excessret.style.format({
+    'Momentum decile': '{:.0f}',  # No decimals
+    'Excess return': '{:.4f}', # 4 decimal places
+    'Alpha': '{:.4f}',
+    't-statistic': '{:.2f}',
+    'p-value': '{:.2f}',
+    'na_rep': "" 
+})
+formatted_dfAgg_v2.hide()
+print(Alphas_excessret)
+
+plot_momentum_portfolios_summary = (
+  ggplot(Alphas_excessret, 
+         aes(x="Momentum decile", y="Alpha", fill="Momentum decile")) +
+  geom_bar(stat="identity") +
+  labs(x="Momentum decile", y="CAPM alpha", fill="Momentum decile",
+       title="CAPM alphas of momentum-sorted portfolios") +
+  scale_x_continuous(breaks=range(1, 11)) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none")
 )
-formatted_dfAgg.hide()
-formatted_dfAgg
+plot_momentum_portfolios_summary.draw()
+
+# Analyzing the momentum strategy
+momentum_longshort = (sorted_data
+  .assign(
+    portfolio=lambda x: (
+      x["Mom_12_decile"].apply(
+        lambda y: "high" if y == x["Mom_12_decile"].max()
+        else ("low" if y == x["Mom_12_decile"].min()
+        else y)
+      )
+    )
+  )
+  .query("Mom_12_decile in ['low', 'high']")
+  .pivot_table(index="month", columns="Mom_12_decile", values="ret")
+  .assign(long_short=lambda x: x["high"]-x["low"])
+  .merge(factors_ff3_monthly, how="left", on="month")
+)
+model_fit = (sm.OLS.from_formula(
+    formula="long_short ~ 1", 
+    data=momentum_longshort
+  )
+  .fit(cov_type="HAC", cov_kwds={"maxlags": 1})
+)
+prettify_result(model_fit)
+
+model_fit.summary()
