@@ -20,8 +20,9 @@ format:
     fontsize: 12pt
 ---
 
-**Exercise 1:**
-In this exercise we load all the necessary packages and data to perform the mandatory assignment.
+**Exercise 1 and 2:**
+
+
 ```{python}
 import pandas as pd
 import numpy as np
@@ -50,7 +51,6 @@ factors_ff3_monthly = pd.read_sql_query(
 )
 ```
 
-**Exercise 2:**
 When computing the momentum we use the market capitalization as opposed to the stock price. The benefit of doing so, is that our computations are not affected by events that increase or decrease the number of outstanding stocks such as stock issuances or buybacks. If we had used the stock price in our computations as opposed to the market capitalization, such events would have artificially increased or decreased our calculated momentum.
 ```{python}
 #Transforming the crsp_monthly dataset to contain mktcap_lag_12
@@ -74,7 +74,8 @@ print(data_for_sorts.head(24))
 ```
 
 **Exercise 3:**
-The equal-weighted average values of the 12-month momentum (Average_Mom_12) and market capitalization (Average_mktcap) is shown in the table below:
+
+The equal-weighted average values of the 12-month momentum (Average_Mom_12) and market capitalization (Average_mktcap) is shown in the table 1 below:
 ```{python}
 # | output : true
 #Bullet 1
@@ -121,11 +122,12 @@ formatted_dfAgg.hide()
 formatted_dfAgg
 ```
 
-Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the table below. The excess return is reported in the "factors_ff3_monthly" dataset and the CAPM alphas are estimated with OLS from the CAPM equation: 
+Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the table 2. The excess return is reported in the "factors_ff3_monthly" dataset and the CAPM alphas are estimated with OLS from the CAPM equation: 
 
 $r_{i,t}-r_{f,t}=\alpha_i+\beta_i(r_{m,t}-r_{f,t})+\epsilon_{i,t}$ 
 
-The null-hypothosis is that alpha is zero and the alternative hypothosis is that alpha is different from zero. 
+
+The null-hypothosis is that alpha is zero and the alternative hypothosis is that alpha is different from zero:
 
 $H_0: \alpha_i=0$ 
 
@@ -199,7 +201,6 @@ formatted_dfAgg_v2 = Alphas_excessret.style.format({
 formatted_dfAgg_v2.hide()
 formatted_dfAgg_v2
 ```
-
 We see from the t-statistics and p-values, that we can reject the null-hypothosis in all cases except for the portfolio of 4th decile momentum stocks. As such, alpha is significantly different from zero in all other cases. To get a better sense of the distribution of alpha accross the ten portfolios, we present the data in a graph:
 ```{python}
 # | output : true
@@ -216,6 +217,19 @@ plot_momentum_portfolios_summary = (
 )
 plot_momentum_portfolios_summary.draw()
 ```
+
+We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with most of the literature. The 2nd and 3rd decile stocks are more aligned with the literature showing negative alphas and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which must yield a negative return.
+
+Specifically, we examine the returns of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We analyze the returns of this portfolio with t-statistics. Here our hypothesizes are:
+
+$H_0: \alpha=0$ 
+
+$H_A: \alpha\neq 0$
+
+To compute the Newey-West standard errors we must choose a bandwidth based on lags for the estimation. The choice here is rather arbitrary and not data-driven, but we choose a lag length of 12 months, since that is also the lag length of the momentum stocks. Our results are presented below:
+
+
+
 ```{python}
 # | output : true
 data_for_sorts['portfolio'] = np.where(data_for_sorts["Mom_12_decile"]==1,'low',np.where(data_for_sorts["Mom_12_decile"]==10,'high','neutral'))
@@ -228,14 +242,36 @@ mom_ls = (data_for_sorts
   )
 
 model_fit = (sm.OLS.from_formula(
-    formula="long_short ~ 1", 
+    formula="long_short ~ 1 + mkt_excess", 
     data=mom_ls
   )
-  .fit(cov_type="HAC", cov_kwds={"maxlags": 60})
+  .fit(cov_type="HAC", cov_kwds={"maxlags": 12})
 )
 prettify_result(model_fit)
 ```
 
-We see that the stocks with lowest momentum offers a very high alpha compared to the rest of the stocks. This can be explained by...
+We cannot reject the null hypothesis that the returns of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from most literature which suggests that it is possible to obtain a positive return with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which is not usually observed.
 
-Apart from the lowest decile stocks, low momentum stocks generally offer negative alpha whereas high momemtum stocks offer a positive alpha. This is not consistent with the CAPM theory and represents an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
+Perhaps we could have could have argued that the stocks in the 1st decile are outliers and cut them from our dataset. When we perform the above exercise on portfolio 2 and 10, we obtain the below results:
+
+```{python}
+# | output : true
+data_for_sorts['portfolio_opt'] = np.where(data_for_sorts["Mom_12_decile"] == 2, 'low', np.where(data_for_sorts["Mom_12_decile"] == 10, 'high', 'neutral'))
+
+mom_ls_opt = (data_for_sorts
+          .query("portfolio_opt in ['low', 'high']")
+          .pivot_table(index="month", columns="portfolio_opt", values="ret_excess")
+          .assign(long_short=lambda x: x["high"]-x["low"])
+          .merge(factors_ff3_monthly, how="left", on="month")
+  )
+
+model_fit = (sm.OLS.from_formula(
+    formula="long_short ~ 1", 
+    data=mom_ls_opt
+  )
+  .fit(cov_type="HAC", cov_kwds={"maxlags": 12})
+)
+prettify_result(model_fit)
+```
+Now the momentum strategy yields a positive return in accordance with the literature. However, this type of data cherry picking is problematic, and we will not pursue the approach further.
+
