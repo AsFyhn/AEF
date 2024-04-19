@@ -22,7 +22,6 @@ format:
 
 **Exercise 1 and 2:**
 
-
 ```{python}
 import pandas as pd
 import numpy as np
@@ -34,8 +33,18 @@ from plotnine import *
 from mizani.formatters import percent_format
 from regtabletotext import prettify_result
 
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import (
+  train_test_split, GridSearchCV, TimeSeriesSplit, cross_val_score
+)
+
 #Connecting to the database
-tidy_finance = sqlite3.connect(database="/Users/emilkolko/Downloads/tidy_finance_python.sqlite")
+tidy_finance = sqlite3.connect(
+    database=f"/Users/asbjornfyhn/Desktop/Emp Fin/data/tidy_finance_python.sqlite"
+)
 
 #Reading in crsp_monthly and factors_ff3_monthly
 crsp_monthly = (pd.read_sql_query(
@@ -201,6 +210,7 @@ formatted_dfAgg_v2 = Alphas_excessret.style.format({
 formatted_dfAgg_v2.hide()
 formatted_dfAgg_v2
 ```
+
 We see from the t-statistics and p-values, that we can reject the null-hypothosis in all cases except for the portfolio of 4th decile momentum stocks. As such, alpha is significantly different from zero in all other cases. To get a better sense of the distribution of alpha accross the ten portfolios, we present the data in a graph:
 ```{python}
 # | output : true
@@ -285,52 +295,117 @@ plot_momentum_longshort_year.draw()
 
 The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio seems to deliver the highest returns even though the two other portfolios have positive alphas. 
 
-<!-- Perhaps we could have could have argued that the stocks in the 1st decile are outliers and cut them from our dataset. When we perform the above exercise on portfolio 2 and 10, we obtain the below results:
+**Exercise 4** 
+In this exercise, we want to estimate a model where the excess return of a stock is linear dependent on its own 60 lags. The regression model looks as follows: 
+
+$r_{i,t+1} 0 \sum_{k=1}^{60} b_k r_{i,t-k} + \sum_{k=1}^{60} c_k r_{i,t-k}^2$
+
+First, we start by cleaning the dataset meaning that we remove the smallest stocks. More precisely, we remove the stocks with the 5% lowest market capitalization. 
 
 ```{python}
-# | output : true
-data_for_sorts['portfolio_opt'] = np.where(data_for_sorts["Mom_12_decile"] == 2, 'low', np.where(data_for_sorts["Mom_12_decile"] == 10, 'high', 'neutral'))
 
-mom_ls_opt = (data_for_sorts
-          .query("portfolio_opt in ['low', 'high']")
-          .pivot_table(index="month", columns="portfolio_opt", values="ret_excess")
-          .assign(long_short=lambda x: x["high"]-x["low"])
-          .merge(factors_ff3_monthly, how="left", on="month")
-  )
+# remove all companies that has a mktcap that is below the 20th percentile
+for month in crsp_monthly["month"].unique():
+    mktcap_20 = crsp_monthly[crsp_monthly["month"] == month]["mktcap"].quantile(0.05)
+    crsp_monthly = crsp_monthly.loc[~((crsp_monthly['month'] == month) & (crsp_monthly['mktcap'] < mktcap_20))]
 
-model_fit = (sm.OLS.from_formula(
-    formula="long_short ~ 1 + mkt_excess", 
-    data=mom_ls_opt
-  )
-  .fit(cov_type="HAC", cov_kwds={"maxlags": 12})
-)
-prettify_result(model_fit)
+# create 60 columns with the lagged ret_excess
+crsp_monthly_lags = crsp_monthly.copy(deep=True)
+for i in range(2, 62):
+    crsp_monthly_lags[f'ret_excess_lag_{i}'] = crsp_monthly_lags.groupby('permno')['ret_excess'].shift(i)
+    crsp_monthly_lags[f'ret_excess_lag_{i}_sq'] = crsp_monthly_lags[f'ret_excess_lag_{i}']**2
+
+crsp_monthly_lags.dropna(subset=[f'ret_excess_lag_{i}' for i in range(2, 62)],inplace=True)
+crsp_monthly_lags.set_index(['permno', 'month'], inplace=True)
+exog = crsp_monthly_lags[[f'ret_excess_lag_{i}' for i in range(2,62)]+[f'ret_excess_lag_{i}_sq' for i in range(2,62)]]
+endog = crsp_monthly_lags.loc[:,'ret_excess']
+
 ```
-Now the momentum strategy yields a positive return in accordance with the literature. However, this type of data cherry picking is problematic, and we will not pursue the approach further.
+
+Next, we demean the dependent variable $r_{i,t+1}$ by month by month subtracting the mean from series. Thus by construction, the mean of the excess return in each month is 0. At the same time, we standardize the lagged excess return by month by month dividing with the standard deviation. In each month, the standard deviation across the firms is one. 
+
+```{python}
+# Standardize the data - dependent variable has a mean of 0 and the predictors a standard deviation of 1
+endog = endog - endog.groupby('month').mean()
+exog = exog / exog.groupby('month').std()
+
+train_endog = endog.loc[endog.index.get_level_values('month') < '2000-01-01']
+train_exog = exog.loc[exog.index.get_level_values('month') < '2000-01-01']
+```
+
+The entire dataset has now been cleaning and transformed in such a way that we are ready to take the analysis further. We will estimate regression coefficient using ridge regression. Thus, we will have to choose the hyperparameter, $\alpha$. 
+
+The hyperparameter is chosen by minimizing the estimated mean squared prediction error, MSPE.
+
+$MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (\hat{y}_t - y_t)^2 \right)$
+
+Before fine tuning the model, we divide our dataset into a training set for hyperparameter selection. Since MSPE can only be estimated, we employ cross-validation. This involves averaging the MSPE across K data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected.
+
+```{python}
+initial_years = 5
+assessment_months = 48*4
+n_splits = 100
+length_of_year = 12
+alphas = np.logspace(-4, 4, 40)
+
+data_folds = TimeSeriesSplit(
+  n_splits=n_splits, 
+  test_size=assessment_months, 
+  max_train_size=initial_years * length_of_year
+)
+```
+
+We tune the model over a grid of alphas that goes from `{python} alphas.min().round(2)` to `{python} alphas.max().round(2)` with 100 datafolds. 
+
+```{python}
+params = {
+  "alpha": alphas,
+}
+ridge_pipeline = Ridge(fit_intercept=False,max_iter=5000)
+
+finder = GridSearchCV(
+  estimator=ridge_pipeline,
+  param_grid=params,
+  scoring="neg_root_mean_squared_error", # RMSE -- https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-parameter 
+  cv=data_folds, # cross validation
+  verbose=1, # Print messages choose 1 through 3 to get more information
+  n_jobs=-1, # Use all cores
+)
+
+finder.fit(
+  train_exog, train_exog
+)
+
+best_est = finder.best_estimator_
+best_est_fit = best_est.fit(train_exog, train_endog)
+coef = best_est_fit.coef_
+
+```
+
+After tuning the model, we set alpha to `{python} best_est.get_params()['alpha'].round(3)`
 
 ```{python}
 # | output : true
-momentum_v2_longshort_year = (mom_ls_opt
-  .assign(year=lambda x: x["month"].dt.year)
-  .groupby("year")
-  .aggregate(
-    low=("low", lambda x: 1-(1+x).prod()),
-    high=("high", lambda x: 1-(1+x).prod()),
-    long_short=("long_short", lambda x: 1-(1+x).prod())
-  )
-  .reset_index()
-  .melt(id_vars="year", var_name="name", value_name="value")
-)
-
-plot_momentum_v2_longshort_year = (
-  ggplot(momentum_v2_longshort_year, 
-         aes(x="year", y="value", fill="name")) +
-  geom_col(position='dodge') +
-  facet_wrap("~name", ncol=1) +
-  labs(x="", y="", title="Annual returns of momentum portfolios") +
+heatmap = pd.DataFrame({'lag':range(2,len(coef)//2+2),'r':coef[len(coef)//2:],'r^2':coef[:-len(coef)//2]})
+( ggplot(heatmap) +
+  geom_col(aes(x='lag', y='r'), position='dodge', fill="blue", alpha=0.5) +  # Bar chart for 'r'
+  geom_point(aes(x='lag', y='r^2'), color="red", size=3) +  # Scatter plot for 'r^2'
+  labs(x="lag", y="Coefficient", title="") +
   scale_color_discrete(guide=False) +
   scale_y_continuous(labels=percent_format()) +
   theme(legend_position="none")
-)
-plot_momentum_v2_longshort_year.draw()
-``` -->
+).draw()
+```
+
+We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns.
+
+\newpage
+
+```{python}
+# | output : true
+heatmap = pd.concat([heatmap.iloc[(i-1)*len(heatmap)//3:i*len(heatmap)//3].reset_index(drop=True) for i in range(1,4)],axis=1)
+heatmap.columns = ['lag','r','r^2','lag ','r ','r^2 ','lag  ','r  ','r^2  ']
+heatmapTable = heatmap.style.background_gradient(cmap='RdYlBu',subset=['lag','r','r^2','lag ','r ','r^2 ','lag  ','r  ','r^2  '])
+heatmapTable.hide()
+```
+
