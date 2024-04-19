@@ -183,11 +183,33 @@ mom_ls = (data_for_sorts
   )
 
 model_fit = (sm.OLS.from_formula(
-    formula="long_short ~ 1", 
+    formula="long_short ~ 1 +mkt_excess", 
     data=mom_ls
   )
   .fit(cov_type="HAC", cov_kwds={"maxlags": 60})
 )
 prettify_result(model_fit)
 
+momentum_longshort_year = (mom_ls
+  .assign(year=lambda x: x["month"].dt.year)
+  .groupby("year")
+  .aggregate(
+    low=("low", lambda x: 1-(1+x).prod()),
+    high=("high", lambda x: 1-(1+x).prod()),
+    long_short=("long_short", lambda x: 1-(1+x).prod())
+  )
+  .reset_index()
+  .melt(id_vars="year", var_name="name", value_name="value")
+)
 
+plot_momentum_longshort_year = (
+  ggplot(momentum_longshort_year, 
+         aes(x="year", y="value", fill="name")) +
+  geom_col(position='dodge') +
+  facet_wrap("~name", ncol=1) +
+  labs(x="", y="", title="Annual returns of momentum portfolios") +
+  scale_color_discrete(guide=False) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none")
+)
+plot_momentum_longshort_year.draw()

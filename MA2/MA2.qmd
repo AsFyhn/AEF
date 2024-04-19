@@ -122,7 +122,7 @@ formatted_dfAgg.hide()
 formatted_dfAgg
 ```
 
-Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the table 2. The excess return is reported in the "factors_ff3_monthly" dataset and the CAPM alphas are estimated with OLS from the CAPM equation: 
+Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in table 2. The excess returns are reported in the "factors_ff3_monthly" dataset and the CAPM alphas are estimated with OLS from the CAPM equation: 
 
 $r_{i,t}-r_{f,t}=\alpha_i+\beta_i(r_{m,t}-r_{f,t})+\epsilon_{i,t}$ 
 
@@ -218,13 +218,13 @@ plot_momentum_portfolios_summary = (
 plot_momentum_portfolios_summary.draw()
 ```
 
-We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with most of the literature. The 2nd and 3rd decile stocks are more aligned with the literature showing negative alphas and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which must yield a negative return.
+We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with most of the literature. The 2nd and 3rd decile stocks are more aligned with the literature showing negative alphas and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
 
-Specifically, we examine the returns of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We analyze the returns of this portfolio with t-statistics. Here our hypothesizes are:
+Specifically, we examine the alpha and beta of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which seems counter-intuitive. We analyze the alpha and beta of this portfolio with t-statistics. Here our hypothesizes are:
 
 $H_0: \alpha=0$ 
 
-$H_A: \alpha\neq 0$
+$H_A: \beta=0$
 
 To compute the Newey-West standard errors we must choose a bandwidth based on lags for the estimation. The choice here is rather arbitrary and not data-driven, but we choose a lag length of 12 months, since that is also the lag length of the momentum stocks. Our results are presented below:
 
@@ -250,9 +250,42 @@ model_fit = (sm.OLS.from_formula(
 prettify_result(model_fit)
 ```
 
-We cannot reject the null hypothesis that the returns of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from most literature which suggests that it is possible to obtain a positive return with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which is not usually observed.
+We cannot reject the null hypothesis that the returns, $\alpha$, of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from most literature which suggests that it is possible to obtain a positive $\alpha$ with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which is not usually observed.
 
-Perhaps we could have could have argued that the stocks in the 1st decile are outliers and cut them from our dataset. When we perform the above exercise on portfolio 2 and 10, we obtain the below results:
+Our results show a significant negative $\beta$, which means the momentum (long/short) portfolio is negatively correlated with the market. This type of portfolio is rare and can be used to reduce the market risk of other investments with positive betas. This type of return mimics the return of gold, which historically have a negative $\beta$.
+
+To further our understanding of the returns of the portfolio we plot the graph below:
+
+```{python}
+# | output : true
+momentum_longshort_year = (mom_ls
+  .assign(year=lambda x: x["month"].dt.year)
+  .groupby("year")
+  .aggregate(
+    low=("low", lambda x: 1-(1+x).prod()),
+    high=("high", lambda x: 1-(1+x).prod()),
+    long_short=("long_short", lambda x: 1-(1+x).prod())
+  )
+  .reset_index()
+  .melt(id_vars="year", var_name="name", value_name="value")
+)
+
+plot_momentum_longshort_year = (
+  ggplot(momentum_longshort_year, 
+         aes(x="year", y="value", fill="name")) +
+  geom_col(position='dodge') +
+  facet_wrap("~name", ncol=1) +
+  labs(x="", y="", title="Annual returns of momentum portfolios") +
+  scale_color_discrete(guide=False) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none")
+)
+plot_momentum_longshort_year.draw()
+```
+
+The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio seems to deliver the highest returns even though the two other portfolios have positive alphas. 
+
+<!-- Perhaps we could have could have argued that the stocks in the 1st decile are outliers and cut them from our dataset. When we perform the above exercise on portfolio 2 and 10, we obtain the below results:
 
 ```{python}
 # | output : true
@@ -266,7 +299,7 @@ mom_ls_opt = (data_for_sorts
   )
 
 model_fit = (sm.OLS.from_formula(
-    formula="long_short ~ 1", 
+    formula="long_short ~ 1 + mkt_excess", 
     data=mom_ls_opt
   )
   .fit(cov_type="HAC", cov_kwds={"maxlags": 12})
@@ -275,3 +308,29 @@ prettify_result(model_fit)
 ```
 Now the momentum strategy yields a positive return in accordance with the literature. However, this type of data cherry picking is problematic, and we will not pursue the approach further.
 
+```{python}
+# | output : true
+momentum_v2_longshort_year = (mom_ls_opt
+  .assign(year=lambda x: x["month"].dt.year)
+  .groupby("year")
+  .aggregate(
+    low=("low", lambda x: 1-(1+x).prod()),
+    high=("high", lambda x: 1-(1+x).prod()),
+    long_short=("long_short", lambda x: 1-(1+x).prod())
+  )
+  .reset_index()
+  .melt(id_vars="year", var_name="name", value_name="value")
+)
+
+plot_momentum_v2_longshort_year = (
+  ggplot(momentum_v2_longshort_year, 
+         aes(x="year", y="value", fill="name")) +
+  geom_col(position='dodge') +
+  facet_wrap("~name", ncol=1) +
+  labs(x="", y="", title="Annual returns of momentum portfolios") +
+  scale_color_discrete(guide=False) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none")
+)
+plot_momentum_v2_longshort_year.draw()
+``` -->
