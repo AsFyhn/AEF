@@ -234,7 +234,7 @@ Specifically, we examine the alpha and beta of a portfolio that shorts the 1st d
 
 $H_0: \alpha=0$ 
 
-$H_A: \beta=0$
+$H_0: \beta=0$
 
 To compute the Newey-West standard errors we must choose a bandwidth based on lags for the estimation. The choice here is rather arbitrary and not data-driven, but we choose a lag length of 12 months, since that is also the lag length of the momentum stocks. Our results are presented below:
 
