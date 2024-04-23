@@ -1,0 +1,403 @@
+---
+title: "Mandatory Assignment 2"
+author: "Daniel Kofoed, Romal G. Sadat & Thor B. Simonsen"
+date: "2024/04/19"
+date-format: long
+execute: 
+  echo: false
+  warning: false
+format:
+  pdf: 
+    fig-pos: 'H'
+    number-sections: false
+    colorlinks: true
+    geometry:
+      - top=20mm
+      - left=20mm
+      - bottom=20mm
+      - right=20mm
+    cite-method: natbib
+    fontsize: 12pt
+---
+```{python}
+import pandas as pd
+import numpy as np
+import sqlite3
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+import statsmodels.api as sm
+#from regtabletotext import prettify_result
+from statsmodels.regression.rolling import RollingOLS
+from plotnine import *
+from mizani.breaks import date_breaks
+from mizani.formatters import percent_format, date_format
+from sklearn.metrics import r2_score
+#from joblib import Parallel, delayed, cpu_count
+from itertools import product
+```
+## Exercise 1
+From the database we read the tables $crsp\_montlhy$ and $factors\_ff3\_monthly$ into two seperate variables. Then we merge these dataframes into one and get:
+```{python}
+#Denne celle og celle 14 skal have korrekt datapath.
+tidy_finance_python = sqlite3.connect(database="/Users/emilkolko/Downloads/tidy_finance_python.sqlite")
+crsp_monthly = (pd.read_sql_query(sql=("SELECT permno, month, industry, ret_excess, mktcap, mktcap_lag " "FROM crsp_monthly"),con=tidy_finance_python,parse_dates={"month"}).dropna())
+mkt_excess = pd.read_sql_query(sql="SELECT month, mkt_excess FROM factors_ff3_monthly",con=tidy_finance_python,parse_dates={"month"})
+df = pd.merge(crsp_monthly, mkt_excess, on='month', how='left')
+
+```
+```{python}
+#| label: tbl-LABEL1
+#| tbl-cap: "The first 5 rows of data from tidy_finance_*.sqlite database "
+dfhead = df.head(5)
+
+dfhead.set_index('permno', inplace=True)
+
+# Remove the industry column from the DataFrame
+dfhead = dfhead.drop(columns=['industry'])
+
+# Display the updated DataFrame
+dfhead.round(3)
+```
+Where: $permno$ is the unique security identifier.
+
+$month$ referes he reference month for the data.
+
+$ret\_excess$ is stock's excess return over the risk-free rate for the month.
+
+$mktcap$ consists of the company's market capitalization at month-end.
+
+$mktcap\_lag$ is the company's market capitalization from the previous month.
+
+$mkt\_excess$ represent the market's excess return over the risk-free rate for the month.
+
+## Exercise 2
+Since we already have the variable $mktcap\_lag$ in the dataset we do not have to create it. When making the other variable $mktcap\_lag\_12$ we simply shift the $mktcap\_lag$ 12 times. Finally we can create our new variable $mom\_12$ which represent the 12-month momentum.
+
+When creating these lag-variables we are left with a lot of NaN rows so we make sure to drop every row which contains these NaN values.
+```{python}
+# Assuming 'mktcap' is a column in your dataset with the actual market capitalization
+df['mktcap_lag_12'] = df.groupby('permno')['mktcap_lag'].shift(12)
+
+# Define a function to calculate momentum
+def calculate_momentum(group):
+    return 100 * (group['mktcap_lag'] - group['mktcap_lag_12']) / group['mktcap_lag_12']
+
+# Group by 'permno', apply the calculate_momentum function, and join the result back to the original dataframe
+df['mom_12'] = df.groupby('permno').apply(calculate_momentum).reset_index(level=0, drop=True)
+df =df.dropna()
+```
+```{python}
+#| label: tbl-LABEL2
+#| tbl-cap: "A section of the data now with mktcap_lag_12 and mom_12"
+dfhead = df.head(5)
+
+dfhead.set_index('permno', inplace=True)
+
+# Remove the industry column from the DataFrame
+dfhead = dfhead.drop(columns=['industry'])
+
+# Display the updated DataFrame
+dfhead.round(3)
+```
+Since the formula for market capitalization is:
+$$
+    MC = SharesOutstanding * StockPrice
+$$
+This means that keeping the Shares outstanding constant, the relative change in price is gonna be the same as the relative change in market capitaliaztion. In the case of a stock split or something else that changes the numbers of shares outstanding the historical data usually gets adjusted aswell.
+
+## Exercise 3
+We create 10 portfolios breakpoints based on the deciles based of the now sorted variable $Mom^{12}_{i,t}$. We remember to drop all rows with NaN values.
+```{python}
+df_sorted = df.sort_values('mom_12')
+```
+```{python}
+def assign_decile_ranks(group):
+    group['portfolio_nr'] = pd.qcut(group['mom_12'], 10, labels=False) + 1
+    return group
+
+# Apply the function to assign decile ranks within each month
+df_sorted = df_sorted.groupby('month').apply(assign_decile_ranks).reset_index(drop=True).dropna()
+```
+```{python}
+equal_weighted_averages = df_sorted.groupby('portfolio_nr').agg(
+    average_momentum=('mom_12', 'mean'),
+    average_mktcap=('mktcap', 'mean')
+).reset_index()
+```
+```{python}
+#| label: tbl-LABEL3
+#| tbl-cap: "Equal-weighted average values"
+# Set the 'portfolio_nr' column as the index and change name
+equal_weighted_averages.set_index('portfolio_nr', inplace=True)
+equal_weighted_averages.index.name = 'Portfolio nr'
+
+# Rename the columns
+equal_weighted_averages.columns = ['Average Momentum', 'Average mktcap']
+
+# Display the updated DataFrame
+equal_weighted_averages.round(3)
+
+```
+Looking at this table we can see that the portfolios the lowest average momentum and the highest average momentun, consists of stocks which also have the lowest average market capitalization. This could suggest that smaller companies are more volatile compared to larger companies and therefore doesn't have these large drop or raise in the their market capitalization during the 12 month period.
+
+The negative average momentum means that its market capitalization has dropped over the 12 month period. This suggest that the strategy for these portfolios would be to short them.
+```{python}
+df_sorted_ret = (df_sorted.groupby(["portfolio_nr", "month"])
+  .apply(lambda x: x.assign(
+      ret=np.average(x["ret_excess"], weights=x["mktcap_lag"])
+    )
+  )
+  .reset_index(drop=True))
+```
+
+```{python}
+df_sorted_ret_summary = (df_sorted_ret 
+  .groupby("portfolio_nr")
+  .apply(lambda x: x.assign(
+      alpha=sm.OLS.from_formula(
+          formula="ret ~ 1 + mkt_excess", 
+          data=x
+        ).fit().params[0],
+      beta=sm.OLS.from_formula(
+          formula="ret ~ 1 + mkt_excess", 
+          data=x
+        ).fit().params[1],
+      ret=x["ret"].mean()
+    ).tail(1)
+  )
+  .reset_index(drop=True)
+  .get(["portfolio_nr", "alpha", "beta", "ret"])
+)
+```
+```{python}
+#| label: fig-LABEL1
+#| fig-cap: "CAPM alphas of momentum-sorted portfolios"
+plot_beta_portfolios_summary = (
+    ggplot(df_sorted_ret_summary, 
+           aes(x="portfolio_nr", y="alpha", fill="portfolio_nr")) +
+    geom_bar(stat="identity") +
+    labs(x="Portfolio", y="CAPM alpha", fill="Portfolio") +
+    scale_y_continuous(labels=percent_format()) +
+    theme(legend_position="none",
+      figure_size=(5, 3))
+)
+plot_beta_portfolios_summary.draw()
+```
+```{python}
+#| label: tbl-LABEL4
+#| tbl-cap: "Momentum-sorted portfolios with CAPM alphas, beta and excess return"
+# Set the 'portfolio_nr' column as the index and change name
+df_sorted_ret_summary.set_index('portfolio_nr', inplace=True)
+df_sorted_ret_summary.index.name = 'Portfolio nr'
+df_sorted_ret_summary.columns = ['alpha', 'beta', 'excess return']
+
+# Display the updated DataFrame
+df_sorted_ret_summary.round(4)
+```
+Given table 4 and figure 1, we know that most of the portfolios have a positive alpha, with the exception of the first two deciles, portfolio 1 and 2, which have a negative alpha. This suggests that the higher momentum deciles, portfolio 3 through 10, have provided returns above what would be expected given their market risk as measured by the beta.
+
+The beta values of the portfolios goes from slightly below 1 to above 1 where portfolio 1 showing the highest beta of 1.606. This indicates that the first portfolio, which is the lowest momentum group, is more volatile and has a higher systematic risk than the market. As we move to higher momentum deciles, the beta generally decreases.
+
+Overall all we see that momentun strategy yield the best alpha's when going long on the higher momentum deciles, especially portfolio 10, and shorting the lower deciles portfolio 1 and 2. Taking these portfolios into account we can clearly see that they are not truly market neutral but close. As to whether or not they deliver excess returns, we can clearly see that some of the portfolios does indeed have excess return, but by no means are they 'abnormal'.
+
+## Exercise 4
+```{python}
+%reset
+import pandas as pd
+import numpy as np
+import sqlite3
+import statsmodels.formula.api as smf
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+#from regtabletotext import prettify_result
+from statsmodels.regression.rolling import RollingOLS
+#from plotnine import *
+#from mizani.breaks import date_breaks
+#from mizani.formatters import percent_format, date_format
+#from joblib import Parallel, delayed, cpu_count
+from itertools import product
+from sklearn.metrics import r2_score
+tidy_finance = sqlite3.connect(
+  database="/Users/emilkolko/Downloads/tidy_finance_python.sqlite"
+)
+
+df = pd.read_sql_query(
+  sql="SELECT * FROM crsp_monthly", 
+  con=tidy_finance, 
+  parse_dates={"month"}
+)
+
+factors_ff3_monthly = pd.read_sql_query(
+  sql="SELECT * FROM factors_ff3_monthly", 
+  con=tidy_finance, 
+  parse_dates={"month"}
+)
+```
+In our analysis, we focus on forecasting future monthly stock returns using a momentum strategy that is generalized to include 60 lags of each stock's own past returns and their squared values. Specifically, the model can be described by the regression equation:
+$$
+r_{i, t+1}=\sum_{k=1}^{60} b_k r_{i, t-k}+\sum_{k=1}^{60} c_k r_{i, t-k}^2
+$$
+where $r_{i, t+1}$ is the future monthly excess return for stock $i, b_k$ and $c_k$ are the coefficients corresponding to the lagged return and the squared lagged return, respectively.
+
+We start of by removing all of the stock that had a market capitalization below the 20% quantile a given month.
+The aproach simply consist of filtering for the NYSE stocks, and deriving the 20th percentiel of each month, followed by filtering the stock which fulfills the condition of being below the 20% quantile. 
+
+```{python}
+df.sort_values(['permno', 'date'], inplace = True)
+
+#Filter for NYSE stocks
+nyse_stocks = df[df['exchange'] == 'NYSE']
+
+# Calculate the 20th percentile of market capitalization for each month directly using transform
+nyse_stocks['mktcap_20th'] = nyse_stocks.groupby('month')['mktcap'].transform(lambda x: x.quantile(0.20))
+
+# Filter stocks where market cap is below the 20th percentile for that month
+omit_nyse_stocks = nyse_stocks[nyse_stocks['mktcap'] <= nyse_stocks['mktcap_20th']]
+
+# Now, filtered_stocks contains all the stocks listed on NYSE which are below the 20th percentile each month
+df = df[~df['permno'].isin(omit_nyse_stocks['permno'].unique())]
+
+#Amount of stocks omitted: 
+#print("Omitted stocks from NYSE: ", omit_nyse_stocks['permno'].nunique())
+
+```
+We therefor end up with excluding 3231 stocks. 
+Futhermore, we create columns for each the 60 lags: $r_{i,t-2},...,r_{i,t-61}$, and similarly for the squared values of each lag: $r_{i,t-2}^2,...,r_{i,t-61}^2$
+```{python}
+# Generate lags and squared terms for the predictors
+predictors = []
+for k in range(2, 62):  # Create lags and squared lags from lag 2 to lag 61
+    df[f'r_{k-1}'] = df.groupby('permno')['ret'].shift(k)
+    predictors.extend([f'r_{k-1}'])
+for k in range(2, 62):
+    df[f'r_{k-1}_squared'] = df[f'r_{k-1}'] ** 2
+    predictors.extend([f'r_{k-1}_squared'])
+```
+```{python}
+df.dropna(inplace=True)
+```
+To ensure the dependent variable, future monthly returns $r_{i, t+1}$, is centered around zero, we demean it by subtracting the overall mean of all monthly returns from each individual return. This transformation is mathematically represented as:
+$$
+y=r_{i, t+1}-\mu_r
+$$
+where $\mu_r$ is the average of all observed monthly returns. This adjustment helps to remove any inherent bias in the data, centering the dependent variable and enhancing the interpretability and stability of the regression analysis.
+```{python}
+# Demean the returns month by month
+df['ret_demeaned'] = df.groupby('month')['ret'].transform(lambda x: x - x.mean())
+
+```
+We standardize predictor variables by demeaning and scaling to unit variance cross-sectionally for each month. Specifically, stock returns $r_{i, t-k}$ and their squares $r_{i, t-k}^2$ are transformed using the formulas:
+$$
+X=\left[\frac{r_{i, t-k}-\bar{\mu}_{r_{t-k}}}{\sigma_{r_{t-k}}}, \frac{r_{i, t-k}^2-\bar{\mu}_{r_{t-k}^2}}{\sigma_{r_{t-k}^2}^2}\right]
+$$
+
+This process normalizes the features, ensuring no single predictor dominates due to scale differences, which gives us a more 
+effective regression analysis.
+```{python}
+# Demean and standardize predictors
+for col in predictors:
+    df[f'{col}_demeaned'] = df.groupby('month')[col].transform(lambda x: x - x.mean())
+    df[f'{col}_standardized'] = df.groupby('month')[f'{col}_demeaned'].transform(lambda x: x / x.std())
+```
+We estimate the coeffecients applying a ridge regression, which is an extension of the traditional OLS method. This approach uses a regularization term to adjust the coefficient estimates, thus enhancing the model's generalizability and stability. The coefficients, are denoted as $\hat{\beta}=[\hat{b}, \hat{c}]$, and are calculated using the formula:
+$$
+\hat{\beta}^{\text {ridge }}=\left(X^T X+\lambda I\right)^{-1} X^T y
+$$
+
+Here, $\lambda$ acts as the regularization parameter that determines the degree of shrinkage applied to the coefficients. Higher values of $\lambda$ cause greater shrinkage, which mitigates the risk of overfitting by penalizing the size of the coefficient values.
+
+ We determine the optimal $\lambda$ by assessing the model's performance across different $\lambda$ values. This ensures that the chosen $lambda$ achieves a balance between fitting the historical data and performing well on unseen data. We evaluate the performance of the model by monitoring changes in both the coefficient of determination $\left(R^2\right)$ and the mean square error (MSE). The choice of $\lambda$ is ultimately based on achieving the highest $R^2$.
+```{python}
+# Prepare the matrix X and the vector y
+X = df[[f'{col}_standardized' for col in predictors]].values
+y = df['ret'].transform(lambda x: x - x.mean()).values  # demeaned dependent variable
+```
+```{python}
+# Example lambda values - test a range spanning several orders of magnitude
+lambda_values = [0 ,10, 100, 500, 1000, 10000]
+
+# Placeholder for the best model
+best_lambda = None
+highest_r2 = float('-inf')  # Initialize with the lowest possible R^2
+
+# Identity matrix size should match the number of features in X
+I = np.eye(X.shape[1])
+
+# Placeholder to store beta coefficients for each lambda and R^2 scores
+beta_coefficients = {}
+r2_scores = []
+
+for lambda_val in lambda_values:
+    # Compute beta_hat using the Ridge regression formula
+    beta_hat = np.linalg.inv(X.T @ X + lambda_val * I) @ X.T @ y
+    
+    # Store the coefficients
+    beta_coefficients[lambda_val] = beta_hat
+    
+    # Predict using X and the computed beta_hat
+    predictions = X @ beta_hat
+    
+    # Calculate the R^2 for these predictions and scale it by 100
+    r2 = r2_score(y, predictions) * 10000000
+    
+    # Store the scores
+    r2_scores.append(r2)
+    
+    # Update best model based on R^2
+    if r2 > highest_r2:
+        best_lambda = lambda_val
+        highest_r2 = r2
+
+# Create a DataFrame to display lambda and R^2
+data = {
+    'Lambda': lambda_values,
+    'Scaled R^2': r2_scores
+}
+results_df = pd.DataFrame(data)
+results_df.set_index('Lambda', inplace=True)
+
+# Print the best lambda value
+#print(f"Best lambda: {best_lambda} with scaled R^2: {highest_r2}")
+```
+```{python}
+#| label: tbl-LABEL5
+#| tbl-cap: "The scaled R^2 values"
+# Display the table
+results_df.round(3)
+```
+By scaling the $R^2$ values by a factor of $10.000.000$, it is clear that the optimal $\lambda$ for our model is 0. This implies that the regularization term does not enhance the model's performance in our specific case. Given that the model did not improve with increased $\lambda$ suggests that the model, when fitted using ordinary least squares without regularization, is already well-suited to the data. This indicates that the underlying data is either not prone to overfitting, or the existing features are all relevant and do not introduce significant multicollinearity. Therefore, the simplest model without regularization proves to be the most effective for capturing the dynamics of our data.
+```{python}
+# Plots of the coefficients for the best lambda
+best_coefficients = beta_coefficients[best_lambda]
+b_k = best_coefficients[:60]
+c_k = best_coefficients[60:]
+```
+```{python}
+#| label: fig-label2
+#| fig-cap: "Coefficients obtained with lambda=0"
+#| fig-subcap: 
+#|   - "Values of b_k for Lambda = 0"
+#|   - "Values of c_k for Lambda = 0"
+#| layout-ncol: 2
+
+
+# Plot for b_k coefficients
+plt.figure(figsize=(5, 3))
+plt.bar(range(len(b_k)), b_k, color='skyblue')  # using skyblue for b_k
+plt.xlabel('Coefficient Index')
+plt.ylabel('Value of b_k')
+plt.show()
+
+
+plt.figure(figsize=(5, 3))
+plt.bar(range(len(c_k)), c_k, color='salmon')  # using salmon for c_k
+plt.xlabel('Coefficient Index')
+plt.ylabel('Value of c_k')
+plt.show()
+```
+Analyzing the coefficients obtained with $\lambda=0$ provides an insights into the patterns in stock returns. The coefficients $b_k$, display a mix of positive and negative values. Notably, certain lags show more substantial positive values, which could be indicative of a momentum effect. This effect implies that stocks exhibiting positive returns in these specific past periods are likely to continue performing well. Conversely, the negative coefficients could be suggestive of a short-term reversal, where stocks that performed poorly might experience a bounce-back in the subsequent periods.
+
+The coefficients $c_k$, associated with the squared returns, show a similar mix of positive and negative values. The presence of these values could point towards a pattern of volatility clustering. Higher absolute values of $c_k$ may imply that stocks with larger fluctuations in past returns, regardless of the direction of those returns, could be expected to show significant movements in the future. This can be interpreted as evidence of a risk premium, where stocks with higher historical volatility are expected to yield higher returns, possibly compensating for the increased level of risk.
+
+Leveraging these insights, a trading strategy can be formulated that incorporates momentum signals from the $b_k$ coefficients and adjusts for risk based on the $c_k$ values. For example, one might construct a portfolio that overweights stocks with the strongest positive $b_k$ values, indicating strong past performance, while also considering the volatility indicated by $c_k$. This strategy could involve scaling investment sizes based on the magnitude of past returns and their variability, aiming to strike a balance between capitalizing on the momentum effect and managing the inherent risk associated with volatility. The ultimate goal of such a strategy would be to maximize returns while controlling for risk, adapting the positions as new data becomes available and as market conditions evolve.
+
