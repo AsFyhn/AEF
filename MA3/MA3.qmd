@@ -1,0 +1,103 @@
+---
+title: "Mandatory Assignment 2"
+author: "Asbjørn Fyhn & Emil Beckett Kolko"
+date: "2024-05-10"
+execute: 
+  echo: false
+  warning: false
+  output: false
+jupyter: python3
+format:
+  pdf: 
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - top=20mm
+      - left=20mm
+      - bottom=20mm
+      - right=20mm
+    cite-method: natbib
+    fontsize: 12pt
+---
+**Introduction**
+
+**Exercise 1**
+```{python}
+import pandas as pd
+import numpy as np
+import sqlite3
+
+from plotnine import *
+from mizani.formatters import percent_format
+from itertools import product
+from scipy.stats import expon
+from scipy.optimize import minimize
+
+
+#Connecting to the database
+tidy_finance = sqlite3.connect(
+    database=f"/Users/emilkolko/Downloads/tidy_finance_python.sqlite"
+)
+
+#Reading in crsp_monthly dataset
+crsp_monthly = (pd.read_sql_query(
+    sql="SELECT permno, month, ret_excess FROM crsp_monthly",
+    con=tidy_finance,
+    parse_dates={"month"})
+)
+
+#Dropping all stocks before 1962
+crsp_monthly = crsp_monthly.query("month >= '1962-01-01'")
+
+#Dropping all stocks after 2020
+crsp_monthly = crsp_monthly.query("month < '2021-01-01'")
+
+#Dropping all stocks with missing values
+crsp_monthly = crsp_monthly.groupby("permno").filter(lambda x: x.shape[0] == 708)
+
+#Summarizing the table with mean return
+summary_stats = crsp_monthly.groupby('permno').agg(
+    mean_return=('ret_excess', 'mean'),      # Mean of 'return' per 'permno'
+)
+
+# Calculate the average of excess return across all stocks
+average_mean_return = summary_stats['mean_return'].mean()
+```
+The CRSP Monthly dataset contains both observations before 1962 and after 2020. We remove those observations such that the dataset only contains data from 1962-2020. Thereafter, we only keep stocks that have exactly 708 observations of excess return. This ensures that there are no stocks with interrupted observations in our dataset, as there is exactly 708 months between January 1962 and December 2020. Our investment universe now consists of `{python} crsp_monthly.groupby("permno").size().shape[0]` different stocks with an average monthly excess return of `{python} round(average_mean_return*100, 2)`%
+
+**Exercise 2**
+The portfolio choice problem for a transactions-cost adjusted certainty equivalent maximization with risk aversion parameter $\gamma$ is given by
+
+$\omega_{t+1}^* := \arg \: \max \: \left( \hat{\omega}^\prime \mu - \nu_t(\omega, \omega_{t^+}, \beta) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)$
+
+Where ${\omega \in \mathbb{R}^N, \, \iota^\prime \omega = 1}$
+
+In the mandatory assignment the proposed transaction costs are specified as 
+
+$TC(\omega,\omega_{t^+})=\lambda(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+})$ 
+
+To follow the proofs presented in Hautsch & Voigt (2019) we define $\lambda\equiv\frac{\beta}{2}$ where $\beta>0$ is just a cost parameter like $\lambda$.
+
+The optimal portfolio thus takes the form
+
+$\omega_{t+1}^* := \arg \: \max \: \left( \hat{\omega}^\prime \mu - \frac{\beta}{2}(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+}) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)=\arg \: \max \: \omega^\prime\mu^*-\frac{\gamma}{2}\omega^\prime\Sigma^*\omega$
+
+Where
+
+$\Sigma^*=\left(1+\frac{\beta}{\gamma}\right)\Sigma$
+
+And
+
+$\mu^*=\mu+\beta\Sigma\omega_{t^+}$
+
+With these new return parameters, we can derive a closed-form solution for the mean-variance efficient portfolio. We compute the mean-variance efficient portfolio by solving for $\gamma$:
+
+$\omega_{t+1}^* = \frac{1}{\gamma} \left( \Sigma^{*-1} - \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1} \iota\iota^\prime\Sigma^{*-1}\right) \mu^* + \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1}\iota$
+
+$=\frac{1}{\gamma+\beta} \left( \Sigma^{-1}-\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1} \iota\iota^\prime\Sigma^{-1}\right)(\mu+\beta\Sigma\omega_{t^+}) + \omega^{mvp}$
+
+$=\omega_{t+1}+\frac{\beta}{\gamma+\beta}(\omega_{t^+}-\omega^{mvp})$
+
+Where $\omega_{t+1}$ is the efficient portfolio without transaction costs and risk aversion parameter $\gamma+\beta$.
+
+$\omega^{mvp}=\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1}\iota$ is the minimum variance allocation.
