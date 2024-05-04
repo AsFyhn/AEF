@@ -101,3 +101,7 @@ $=\omega_{t+1}+\frac{\beta}{\gamma+\beta}(\omega_{t^+}-\omega^{mvp})$
 Where $\omega_{t+1}$ is the efficient portfolio without transaction costs and risk aversion parameter $\gamma+\beta$.
 
 $\omega^{mvp}=\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1}\iota$ is the minimum variance allocation.
+
+We see that the optimal weights are a linear combination of the efficient portfolio without transaction costs and the difference between the minimum variance portfolio and the portfolio before reallocation weights. The weight $\frac{\beta}{\beta+\gamma}$ only depends on the risk aversion and the cost parameter (which is not nescesarily linked to volatility). Thus, the weight $\frac{\beta}{\beta+\gamma}$ is not affected by $\Sigma$. Only $\omega_{t+1}$ and $\omega^{mvp}$ is affected by $\Sigma$. Therefore, the effect of making transaction costs proportional to volatility is ambigous and depends on how $\beta$ and $\Sigma$ affect each other.
+
+Without endogeneous transaction costs there is a shift towards the global minimum-variance portfolio due to the need to reduce portfolio volatility. This is the effect we're trying to combat.
