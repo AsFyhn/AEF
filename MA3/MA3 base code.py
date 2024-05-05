@@ -60,33 +60,6 @@ w_mvp = np.linalg.inv(sigma) @ np.ones(n_industries)
 # Finally we normalize the weights so they sum to one
 w_mvp = w_mvp/w_mvp.sum()
 
-print(returns_pivot)
-
-print(mu)
-
-print(sigma)
-
-print(w_mvp)
-
-
-# n_industries = crsp_monthly.shape[1]
-
-# mu = np.array(crsp_monthly.mean()).T
-# sigma = np.array(crsp_monthly.cov())
-# w_mvp = np.linalg.inv(sigma) @ np.ones(n_industries)
-# w_mvp = w_mvp/w_mvp.sum()
-
-# weights_mvp = pd.DataFrame({
-#   "Industry": crsp_monthly.columns.tolist(),
-#   "Minimum variance": w_mvp
-# })
-# print(weights_mvp.round(3))
-
-# print(mu)
-# print(sigma)
-
-
-
 # Writing a function that computes the optmial weights
 def compute_efficient_weight(sigma, 
                              mu, 
@@ -97,22 +70,26 @@ def compute_efficient_weight(sigma,
     
     n = sigma.shape[1]
     iota = np.ones(n)
-    sigma_processed = sigma+(beta/gamma)*np.eye(n)
-    mu_processed = mu+beta*w_prev
-
+    sigma_processed = sigma+(beta/gamma)*np.eye(n) # old version
+    mu_processed = mu+beta*w_prev # Ditto
+    # sigma_processed = sigma+(beta/gamma)*sigma # Chanced to fit transaction costs proportional to volatility
+    # mu_processed = mu+beta*sigma*w_prev # Ditto
     sigma_inverse = np.linalg.inv(sigma_processed)
+
+    # Mu_processed ændrer opbygning efter jeg transformerer den. Måske kan Asbjørn hjælpe med det?
 
     w_mvp = sigma_inverse @ iota
     w_mvp = w_mvp/np.sum(w_mvp)
     w_opt = w_mvp+(1/gamma)*\
         (sigma_inverse-np.outer(w_mvp, iota) @ sigma_inverse) @ mu_processed
-        
+test=(1/gamma)*\
+        (sigma_inverse-np.outer(w_mvp, iota) @ sigma_inverse) @ mu_processed
     return w_opt
 
 w_efficient = compute_efficient_weight(sigma, mu)
 
 print(w_efficient)
-
+print(w_mvp)
 
 gammas = [2, 4, 8, 20]
 betas = 20*expon.ppf(np.arange(1, 100)/100, scale=1)
