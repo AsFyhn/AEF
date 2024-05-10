@@ -36,7 +36,7 @@ from scipy.optimize import minimize
 
 #Connecting to the database
 tidy_finance = sqlite3.connect(
-    database=f"/Users/emilkolko/Downloads/tidy_finance_python.sqlite"
+    database=f"/Users/asbjornfyhn/Desktop/Emp Fin/data/tidy_finance_python.sqlite"
 )
 
 #Reading in crsp_monthly dataset
@@ -46,14 +46,12 @@ crsp_monthly = (pd.read_sql_query(
     parse_dates={"month"})
 )
 
-#Dropping all stocks before 1962
-crsp_monthly = crsp_monthly.query("month >= '1962-01-01'")
+# Slicing the dataset only to include data from after 1962 before 2021
+crsp_monthly = crsp_monthly.query("month >= '1962-01-01'").query("month < '2021-01-01'")
 
-#Dropping all stocks after 2020
-crsp_monthly = crsp_monthly.query("month < '2021-01-01'")
-
-#Dropping all stocks with missing values
-crsp_monthly = crsp_monthly.groupby("permno").filter(lambda x: x.shape[0] == 708)
+#Dropping all stocks which don't have a uninterupted returnsserie 
+no_of_obs_per_permno = crsp_monthly.month.unique().shape[0]
+crsp_monthly = crsp_monthly.groupby("permno").filter(lambda x: x.shape[0] == no_of_obs_per_permno)
 
 #Summarizing the table with mean return
 summary_stats = crsp_monthly.groupby('permno').agg(
@@ -63,6 +61,7 @@ summary_stats = crsp_monthly.groupby('permno').agg(
 # Calculate the average of excess return across all stocks
 average_mean_return = summary_stats['mean_return'].mean()
 ```
+
 The CRSP Monthly dataset contains both observations before 1962 and after 2020. We remove those observations such that the dataset only contains data from 1962-2020. Thereafter, we only keep stocks that have exactly 708 observations of excess return. This ensures that there are no stocks with interrupted observations in our dataset, as there is exactly 708 months between January 1962 and December 2020. Our investment universe now consists of `{python} crsp_monthly.groupby("permno").size().shape[0]` different stocks with an average monthly excess return of `{python} round(average_mean_return*100, 2)`%
 
 **Exercise 2**
@@ -70,37 +69,49 @@ The CRSP Monthly dataset contains both observations before 1962 and after 2020. 
 **Bullet 1**
 The portfolio choice problem for a transactions-cost adjusted certainty equivalent maximization with risk aversion parameter $\gamma$ is given by
 
-$\omega_{t+1}^* := \arg \: \max \: \left( \hat{\omega}^\prime \mu - \nu_t(\omega, \omega_{t^+}, \beta) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)$
+$$
+\omega_{t+1}^* = \arg \: \max \: \left( \hat{\omega}^\prime \mu - \nu_t(\omega, \omega_{t^+}, \beta) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)
+$$
 
 Where ${\omega \in \mathbb{R}^N, \, \iota^\prime \omega = 1}$
 
 In the mandatory assignment the proposed transaction costs are specified as 
 
-$TC(\omega,\omega_{t^+})=\lambda(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+})$ 
+$$
+TC(\omega,\omega_{t^+})=\lambda(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+})
+$$ 
 
 To follow the proofs presented in Hautsch & Voigt (2019) we define $\lambda\equiv\frac{\beta}{2}$ where $\beta>0$ is just a cost parameter like $\lambda$.
 
 The optimal portfolio thus takes the form
 
-$\omega_{t+1}^* := \arg \: \max \: \left( \hat{\omega}^\prime \mu - \frac{\beta}{2}(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+}) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)=\arg \: \max \: \omega^\prime\mu^*-\frac{\gamma}{2}\omega^\prime\Sigma^*\omega$
+
+$$
+\omega_{t+1}^* = \arg \: \max \: \left( \hat{\omega}^\prime \mu - \frac{\beta}{2}(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+}) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)
+$$
+$$
+=\arg \: \max \: \omega^\prime\mu^*-\frac{\gamma}{2}\omega^\prime\Sigma^*\omega
+$$
 
 Where
 
-$\Sigma^*=\left(1+\frac{\beta}{\gamma}\right)\Sigma$
-
-And
-
-$\mu^*=\mu+\beta\Sigma\omega_{t^+}$
+$$
+\Sigma^*=\left(1+\frac{\beta}{\gamma}\right)\Sigma \;\; \text{and} \;\; \mu^*=\mu+\beta\Sigma\omega_{t^+}
+$$
 
 With these new return parameters, we can derive a closed-form solution for the mean-variance efficient portfolio. We compute the mean-variance efficient portfolio by solving for $\gamma$:
 
-$\omega_{t+1}^* = \frac{1}{\gamma} \left( \Sigma^{*-1} - \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1} \iota\iota^\prime\Sigma^{*-1}\right) \mu^* + \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1}\iota$
+$$
+\omega_{t+1}^* = \frac{1}{\gamma} \left( \Sigma^{*-1} - \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1} \iota\iota^\prime\Sigma^{*-1}\right) \mu^* + \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1}\iota 
+$$
+$$
+=\frac{1}{\gamma+\beta} \left( \Sigma^{-1}-\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1} \iota\iota^\prime\Sigma^{-1}\right)(\mu+\beta\Sigma\omega_{t^+}) + \omega^{mvp}
+$$
+$$
+=\omega_{t+1}+\frac{\beta}{\gamma+\beta}(\omega_{t^+}-\omega^{mvp})
+$$
 
-$=\frac{1}{\gamma+\beta} \left( \Sigma^{-1}-\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1} \iota\iota^\prime\Sigma^{-1}\right)(\mu+\beta\Sigma\omega_{t^+}) + \omega^{mvp}$
-
-$=\omega_{t+1}+\frac{\beta}{\gamma+\beta}(\omega_{t^+}-\omega^{mvp})$
-
-Where $\omega_{t+1}$ is the efficient portfolio without transaction costs and risk aversion parameter $\gamma+\beta$.
+where $\omega_{t+1}$ is the efficient portfolio without transaction costs and risk aversion parameter $\gamma+\beta$.
 
 $\omega^{mvp}=\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1}\iota$ is the minimum variance allocation.
 
@@ -124,10 +135,10 @@ sigma = returns_pivot.cov().values
 
 # Calculate the minimum variance portfolio
 # First we create a vector of ones with the same length as the number of stocks
-n_industries = crsp_monthly.groupby("permno").size().shape[0]
-print(n_industries)
+n_assets = crsp_monthly.groupby("permno").size().shape[0]
+print(n_assets)
 # Next we calculate the inverse of the covariance matrix and multiply it with the vector of ones
-w_mvp = np.linalg.inv(sigma) @ np.ones(n_industries)
+w_mvp = np.linalg.inv(sigma) @ np.ones(n_assets)
 # Finally we normalize the weights so they sum to one
 w_mvp = w_mvp/w_mvp.sum()
 ```
@@ -159,7 +170,6 @@ w_efficient = compute_efficient_weight(sigma, mu)
 ```
 
 ```{python}
-# | output : true
 # Computing the optimal weights for different values of beta but with the same inital allocation accounting for sigma's influence on the transaction costs.
 gammas = [4]
 betas = 20*expon.ppf(np.arange(1, 100)/100, scale=1)
@@ -189,9 +199,358 @@ rebalancing_plot = (
     guides(linetype=None) +
     labs(x="Beta", y="Distance from MVP",
          color="Risk aversion",
-         title=("Portfolio weights for different betas"))
+         title=("Portfolio weights for different risk aversion and "
+                "transaction cost"))
+  + theme_classic()
+  + theme(legend_position="top")
 )
+```
+
+```{python}
+# | output : true
 rebalancing_plot.draw()
 ```
 
-We see that a rising $\beta$ makes the investor deviate less and less from his initial allocation (in this instance, the minimum variance portfolio). This makes sense, as it is more expensive to reallocate his portfolio weights. When beta is 0, transaction costs are also zero. In this case, the investor chooses a portfolio on the efficient frontier that matches his risk preference $\gamma=4$. However, when $\beta>0$ he chooses a portfolio between his initial allocation and the portfolio on the efficient frontier.
+**Exercise 3**
+
+The objective of the exercise is to backtest three different portfolios and compare their performance.
+The portfolios are:
+
+1. Naive portfolio: weights are equal for all companies. 
+
+2. Mean-variance portfolio: weights are determined by the mean-variance optimization with a no-short-selling constraint.
+
+3. Hautsch et al. portoflio: weights are theoretically optimal with ex-ante adjustment for transaction costs.
+
+
+For portfolio 1. the weights are calculated as 
+
+$$ 
+w_i = 1/N, \: \forall i=1,2,...,N
+$$ 
+
+where $N$ is the number of companies.
+
+```{python}
+def compute_naive_portfolio(N):
+    """
+    This function creates a naive portfolio with N stocks. The portfolio is equally weighted.
+    """
+    return np.repeat(1/N,N)
+```
+
+For portfolio 2. the weights are calculated as
+
+$$
+w = \arg \min \frac{1}{2} w' \hat{\Sigma} w \:\: \text{s.t.} \\
+\sum_{i=0}^N w_i = 1 \\
+w_i \geq 0, \: \forall i=1,2,...,N
+$$
+
+where $\hat{\Sigma}$ is some estimated covariance matrix of returns. The estimator for the covariance matrix will be explained later.
+
+```{python}
+# optimization constraints and parameters
+def objective_mvp(w, *args):
+    sigma = args[0]
+    return 0.5*w.T @ sigma @ w
+  
+def gradient_mvp(w, *args):
+    sigma = args[0]
+    return sigma @ w
+
+def equality_constraint(w):
+    return np.sum(w)-1
+
+def jacobian_equality(w):
+    return np.ones_like(w)
+
+constraints = (
+  {"type": "eq", "fun": equality_constraint, "jac": jacobian_equality}
+)
+
+options = {
+  "tol":1e-20,
+  "maxiter": 10000,
+  "method":"SLSQP"
+}
+
+def compute_mean_variance_portfolio(mu, sigma, constraints, options,w_initial):
+    """
+    This function computes the mean-variance portfolio
+    """
+    N = mu.shape[0]
+    if w_initial is None:
+        w_initial = compute_naive_portfolio(N)
+    w_mvp = minimize(
+        x0=w_initial,
+        fun=objective_mvp,
+        jac=gradient_mvp,
+        args=(sigma),
+        bounds=((0, None), )*N,
+        constraints=constraints,
+        tol=options["tol"],
+        options={"maxiter": options["maxiter"]},
+        method=options["method"]
+    )
+    return w_mvp.x
+```
+
+For portfolio 3. the weights are calculated as explained in the previous exercise.
+
+```{python}
+def compute_efficient_weight(sigma, 
+                             mu, 
+                             gamma=2, 
+                             beta=0,
+                             w_prev=None):
+    """Compute efficient portfolio weights."""
+    
+    n = sigma.shape[1]
+    iota = np.ones(n)
+    if w_prev is None:
+        w_prev = np.ones(sigma.shape[1])/sigma.shape[1]
+    sigma_processed = sigma+(beta/gamma)*np.eye(n)
+    mu_processed = mu+beta*w_prev
+
+    sigma_inverse = np.linalg.inv(sigma_processed)
+
+    w_mvp = sigma_inverse @ iota
+    w_mvp = w_mvp/np.sum(w_mvp)
+    w_opt = w_mvp+(1/gamma)*\
+        (sigma_inverse-np.outer(w_mvp, iota) @ sigma_inverse) @ mu_processed
+        
+    return w_opt
+```
+
+Throughout the exercise we will use a transaction cost of 200*bp* and risk-aversion of $\gamma=4$.
+
+Returning to the estimator of returns vector $\mu$ and the covariance matrix $\Sigma$. We use a rather simple sample average of past returns as our estimator for the returns while we will use the Ledoit-Wolf shrinkage estimator which is given by:
+
+```{python}
+def expected_returns(data: pd.DataFrame)->np.ndarray:
+    """
+    This function estimates the expected returns for each stock in the crsp_monthly dataset
+    """
+    return crsp_monthly.groupby("permno").ret_excess.mean().values
+```
+
+
+$$ 
+\hat{\Sigma} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}}
+$$
+
+where $alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
+The target matrix is given by:
+
+$$
+\hat{\Sigma}_{\text{target}} = I_N (\frac{1}{N} \sum_{i=1}^N var(r_{it}))
+$$
+
+where $I_N$ is the identity matrix of size $N \times N$ and $var(r_{it})$ is the variance of the returns of company $i$.
+The linear shrinkage parameter is given by: $\alpha = \frac{\hat{\pi}}{\hat{\gamma}}$, where $\hat{\pi}$ is the average pairwise sample covariance and $\hat{\gamma}$ is Frobenuis norm of the matrix $\hat{\Sigma}_{\text{sample}} - \hat{\Sigma}_{\text{target}}$.
+
+```{python}
+# Estimate the covariance matrix
+def cov1Para(Y,k = None):
+    """
+    This function estimates the covariance matrix for the stocks in the crsp_monthly dataset
+    """
+    #Pre-Conditions: Y is a valid pd.dataframe and optional arg- k which can be
+    #    None, np.nan or int
+    #Post-Condition: Sigmahat dataframe is returned
+
+    # de-mean returns if required
+    N,p = Y.shape                      # sample size and matrix dimension
+   
+    #default setting
+    if k is None or math.isnan(k):
+        mean = Y.mean(axis=0)
+        Y = Y.sub(mean, axis=1)                               #demean
+        k = 1
+    #vars
+    n = N-k                                    # adjust effective sample size
+    
+    
+    #Cov df: sample covariance matrix
+    sample = pd.DataFrame(np.matmul(Y.T.to_numpy(),Y.to_numpy()))/n     
+    
+    # compute shrinkage target
+    diag = np.diag(sample.to_numpy())
+    meanvar= sum(diag)/len(diag)
+    target=meanvar*np.eye(p)
+    
+    # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+    Y2 = pd.DataFrame(np.multiply(Y.to_numpy(),Y.to_numpy()))
+    sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     # sample covariance matrix of squared returns
+    piMat=pd.DataFrame(sample2.to_numpy()-np.multiply(sample.to_numpy(),sample.to_numpy()))
+    
+
+    pihat = sum(piMat.sum())
+    
+    # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+    gammahat = np.linalg.norm(sample.to_numpy()-target,ord = 'fro')**2
+    
+    # compute shrinkage intensity
+    kappahat=pihat/gammahat
+    shrinkage=max(0,min(1,kappahat/n))
+    
+    # compute shrinkage estimator
+    sigmahat=shrinkage*target+(1-shrinkage)*sample
+    
+    return sigmahat
+
+def covariance_matrix(crsp_monthly, linear_shrinkage = False):
+    """
+    This function estimates the covariance matrix for the stocks in the crsp_monthly dataset
+    """
+    dataframe = crsp_monthly.pivot(index="month", columns="permno", values="ret_excess")
+    if linear_shrinkage:
+        sigma = cov1Para(dataframe)
+    else: 
+        sigma = dataframe.cov().values
+    return sigma
+
+```
+
+
+
+In our backtest, we slice the dataset into 600 months of accessible data and 120 months of data which we use as out-of-sample data for testing the performance for each portfolio. We choose to test our portfolios on the last 120 months of data taking computation time into account and at the same time we want to have a reasonable amount of data to test the performance of the portfolios. 
+
+We assume that the portfolios are equally weighted and thus equal to the naive portfolio - only playing a role for portfolio 3 which takes the transaction cost of moving from one portfolio to another into account. Coming into 2011 (starting period), the optimal portfolios are created on based on the estimates of $\hat{\Sigma}$ and $\hat{\mu}$ which are estimated on all available data up to the period. After having the optimal portfolios, we use the returns of the current month to calculate the performance of the portfolios. Likewise in the following month, the portfolio weigths are updated using the new estimates of $\hat{\Sigma}$ and $\hat{\mu}$. This procedure is repeated until the end of dataset. 
+
+```{python}
+def adjust_weights(w, next_return):
+    """
+    This function adjusts the portfolio weights based on the next period's returns.
+    """
+    w_prev = 1+w*next_return
+    w_next = np.array(w_prev/np.sum(np.array(w_prev)))
+    return w_next
+
+def evaluate_performance(w, w_previous, next_return, beta=50):
+    """Calculate portfolio evaluation measures."""  
+    
+    raw_return = np.dot(next_return, w)
+    turnover = np.sum(np.abs(w-w_previous))
+    net_return = raw_return-beta/10000*turnover
+    
+    return np.array([raw_return, turnover, net_return])
+  
+# define legnth of available data and length of backtest period
+window_length = 600 
+periods = len(crsp_monthly['month'].unique())-window_length
+
+n_assets = len(crsp_monthly['permno'].unique())
+# set equal weights for all assets in period t-1
+w_prev_1 = w_prev_2 = w_prev_3 = np.ones(n_assets)/n_assets
+
+# define transaction cost and risk aversion
+beta = 200
+gamma = 4
+
+# initialize performance dictionary to store performance values
+performance_values = np.empty((periods, 3)) + np.nan
+performance_values = {
+  "MV (TC)": performance_values.copy(), 
+  "Naive": performance_values.copy(), 
+  "MV": performance_values.copy()
+}
+
+# sort the values so we can iterate over the data
+crsp_monthly.sort_values(["month","permno"], inplace=True)
+
+for p in range(periods):
+  # select the available data to estimate the covariance matrix and expected returns
+  returns_window = crsp_monthly.groupby('permno', group_keys=False).apply(lambda x: x.iloc[p:(p+window_length-1), :])#.sort_values('permno')
+  # select the next period's return -- not avaliable to estimate the portfolio
+  next_return = crsp_monthly.groupby('permno', group_keys=False).apply(lambda x: x.iloc[p+window_length, :])['ret_excess']
+
+  # estimate the covariance matrix and expected returns
+  sigma_window = covariance_matrix(returns_window, linear_shrinkage=True)
+  mu_window = expected_returns(returns_window)
+  #######################################
+  # Transaction-cost adjusted portfolio
+  w_1 = compute_efficient_weight(
+    sigma=sigma_window,
+    mu=mu_window,  
+    beta=beta*2, # since lambda = 200 but lambda = beta/2 
+    gamma=gamma, 
+    w_prev=w_prev_1
+  )#.iloc[0,:].values
+
+  # Evaluate performance of the portfolio
+  performance_values["MV (TC)"][p,:] = evaluate_performance(w_1, w_prev_1, next_return, beta=beta) 
+  # Update the portfolio weights
+  w_prev_1 = adjust_weights(w_1, next_return) 
+
+  #######################################
+  # Naive portfolio
+  w_2 = compute_naive_portfolio(n_assets)
+  # Evaluate performance of the portfolio
+  performance_values["Naive"][p, :] = evaluate_performance(w_2, w_prev_2, next_return)
+  # Update the portfolio weights
+  w_prev_2 = adjust_weights(w_2, next_return)
+
+  #######################################
+  # Mean-variance efficient portfolio (w/o transaction costs)
+  w_3 = compute_mean_variance_portfolio(
+    mu=mu_window, 
+    sigma=sigma_window, 
+    constraints=constraints, 
+    options=options,
+    w_initial=w_prev_3)
+  # Evaluate performance of the portfolio
+  performance_values["MV"][p, :] = evaluate_performance(w_3, w_prev_3, next_return)
+  # Update the portfolio weights
+  w_prev_3 = adjust_weights(w_3, next_return)
+
+# store the performance values in a DataFrame
+performance = pd.DataFrame()
+for i in enumerate(performance_values.keys()):
+    tmp_data = pd.DataFrame(
+      performance_values[i[1]], 
+      columns=["raw_return", "turnover", "net_return"]
+    )
+    tmp_data["strategy"] = i[1]
+    performance = pd.concat([performance, tmp_data], axis=0)
+
+length_year = 12
+# calculate the performance table: mean, standard deviation, Sharpe ratio, and turnover
+performance_table = (performance
+  .groupby("strategy")
+  .aggregate(
+    mean=("net_return", lambda x: length_year*100*x.mean()),
+    sd=("net_return", lambda x: np.sqrt(length_year)*100*x.std()),
+    sharpe_ratio=("net_return", lambda x: (
+      (length_year*100*x.mean())/(np.sqrt(length_year)*100*x.std()) 
+        if x.mean() > 0 else np.nan)
+    ),
+    turnover=("turnover", lambda x: 100*x.mean())
+  )
+  .reset_index()
+)
+```
+
+**The results** of our backtest of the portfolios are presented in the table below. Here, we see from the mean return that the mean-variance portfolio that does not take transaction cost into account performs very poorly with a negative mean return. This can be attributed to the large turnover in the portfolio. However, it is the portfolio with the lowest standard deviation which is aligned with what you might expect. 
+The naive portfolio and third portfolio have very similar properites though the turnover in the naive portfolio is relatively small. 
+```{python}
+# | output : true
+performance_table.rename(columns=
+                         {"strategy": "Strategy",
+                          "mean": "Mean",
+                          "sd": "Standard Deviation",
+                          "sharpe_ratio": "Sharpe Ratio",
+                          "turnover":"Turnover"}, inplace=True)
+# reindex 
+performance_table = performance_table.reindex([2,0,1])
+performance_table.style.format({
+    "Mean": "{:.2f}%",
+    "Standard Deviation": "{:.2f}%",
+    "Sharpe Ratio": "{:.3}",
+    "Turnover": "{:.2f}%"
+}).hide(axis='index').set_properties(subset=["Strategy"], **{'text-align': 'left','font-weight': 'bold'})
+```
+
+
+**Discussion on backtest:** Our backtest strategy only uses the data that is available at the time of the portfolio creation. This means that we do not use any future data to estimate the optimal portfolios, and therefor no look-ahead bias is present in our backtest. This makes our backtest realistic and reliable. However, the dataset which we use to test is obviously not true out-of-sample data and the results will be biased based on the chosen period of testing. For instance, should the drawdown of the market around the Great-Financial Crisis be in the testing period or not, and thus could certain portfolios be favored over others based on the testing period. Alternatively, we could generate a dataset from random drawings based on our estimated $\hat{\Sigma}$ and $\hat{\mu}$ and use this as out-of-sample data. This type of backtest would be more robust to the choice of testing period. However, it would be based on estimator of $\hat{\Sigma}$ and $\hat{\mu}$ which are not the true values and thus not resembling true data.
