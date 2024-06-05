@@ -41,7 +41,7 @@ tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                  'IBM', 'AAPL', 'AMZN', 'JNJ', 'PG', 'CVX',
                    'MRK', 'DIS', 'NKE', 'MMM', 'KO', 'WMT', 
                    'DOW', 'CSCO', 'INTC', 'VZ']
-return_col = 'log_return' # alternatively use 'ret' to get standard returns
+return_col = 'ret' # alternatively use 'ret' to get standard returns
 ```
 
 ```{python}
@@ -165,7 +165,8 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
 
     #----- efficient frontier portfolio
-    mu_bar = mvp_return*2
+    return_multiple = 2
+    mu_bar = return_multiple * mvp_weights.T @ mu
     C = iota.T @ sigma_inv @ iota
     D = iota.T @ sigma_inv @ mu_est
     E = mu_est.T @ sigma_inv @ mu_est
@@ -208,15 +209,9 @@ The minimum variance portfolio has an expected return of `{python} (mvpRet*100).
 ```{python}
 
 #---- tangency portfolio
-# ¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
-#       connsider if there is a better way
-# ????????????????????????????????????????????????
-d = np.vstack((cef.inputs['sigma'],np.ones(27)))
-c = np.append(cef.inputs['mu'],0)
-e = np.hstack((d,c.reshape(c.shape[0],1)))
-q = np.append(np.zeros(cef.inputs['mu'].shape[0]),1)
-tan_weights = np.linalg.inv(e) @ q
-tan_weights = tan_weights[:-1]
+rf = 0
+sigma_inv = np.linalg.inv(sigma) 
+tan_weights =  sigma_inv@(mu - rf) / (np.ones(mu.shape) @ sigma_inv @ (mu - rf))
 tanRet, tanVol = calc_return_std(weights=tan_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
 
 # sharpe-ratio
@@ -232,9 +227,9 @@ tanLine = pd.DataFrame((vol,ret),index=['vol','ret']).T
 res_figure = (
   ggplot(cef.res, aes(x="sd", y="mu")) +
   geom_point() + 
-  geom_line(tanLine, aes(x='vol',y='ret'))+
+  # geom_line(tanLine, aes(x='vol',y='ret'))+
   geom_point(
-    pd.DataFrame({"mu": [mvpRet, efpRet,tanRet],"sd":[mvpVol, efpVol,tanVol]}),
+    pd.DataFrame({"mu": [mvpRet, efpRet],"sd":[mvpVol, efpVol]}),
     size=4, 
     color='darkblue',
     ) +
@@ -249,6 +244,15 @@ res_figure = (
   scale_x_continuous(labels=percent_format()) +
   scale_y_continuous(labels=percent_format())
 )
+```
+
+```{python}
+#| output: true
+#| tbl-cap: "Portfolio Statistics"
+pd.DataFrame({'Tangency Portfolio': [tanRet, tanVol, tanRet/tanVol],
+              'Efficient Frontier Portfolio': [efpRet, efpVol, efpSR],
+              'Minimum Variance Portfolio': [mvpRet, mvpVol, mvpSR]},
+             index=['Return', 'Volatility', 'Sharpe Ratio'])
 ```
 
 ```{python}
