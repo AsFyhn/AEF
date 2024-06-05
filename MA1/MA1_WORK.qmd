@@ -61,8 +61,8 @@ df = (inputdf
       .last()
       .reset_index()
       .assign(date=lambda x: x['date'].dt.strftime('%Y-%m-%d'))  # Convert date to string
-      .query("date >= '2000-01-01'")  # Filter for dates >= 1999-04-01
-      .query("date <= '2023-12-31'")  # Filter for dates >= 1999-04-01
+      .query("date >= '2000-01-01'")  
+      .query("date <= '2023-12-31'")
       )
 
 # remove all tickers where there is no data for each month 
@@ -91,7 +91,7 @@ sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 ```
 
 **Exercise 1 and 2**  <!-- The code for this exercise is found above -->  
-We retrieve the daily adjusted prices of all the constituents of the Dow Jones index from January 1st 2000 to December 31st, 2023 from Yahoo!Finance and remove all tickers with no continuous trading history. We calculate the monthly returns of each ticker and use these series to calculate a vector of the average monthly returns $\mu$ and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratios (S), we use the formula: $S_i=\frac{r_i}{\sigma_i}$, where $r_i$ is the annualized return and $\sigma_i$ is the annualized standard deviation for ticker i. The stock with the highest Sharpe ratio is `{python} sr_high` with a ratio of `{python} sharpe_ratio.max().round(2)`.
+We retrieve the daily adjusted prices of all the constituents of the Dow Jones index from January 1st 2000 to December 31st, 2023 from Yahoo!Finance and remove all tickers with no continuous trading history. We calculate the monthly returns of each ticker and use these series to calculate a vector of the average monthly returns $\mu$ and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratios (S), we use the formula: $S_i=\frac{r_i}{\sigma_i}$, where $r_i$ is the annualized return and $\sigma_i$ is the annualized standard deviation for ticker i. The stock with the highest Sharpe ratio is `{python} sr_high` with a ratio of `{python} sharpe_ratio.max().round(3)`.
 
 ```{python}
 
@@ -273,10 +273,11 @@ res_figure
 ```
 
 **Exercise 4**  
-The efficient tangency portfolio weights are displayed below:
+We calculate the eﬀicient tangency portfolio weights as $w_{tgc}=\frac{\Sigma^-\mu}{\iota'\Sigma^-\mu}$ under the assumption that the risk free rate is 0. The weights are presented in @fig-tw below.
 
 ```{python}
 #| output: true
+#| label: fig-tw
 #| fig-cap : "The weights of the Efficient Tangency Portfolio"
 #| fig-align : 'center'
 #| fig-pos: 'h'
@@ -293,11 +294,13 @@ w_tgc = pd.DataFrame({'Ticker': df['ticker'].unique(), 'Weight': tan_weights})
         )
 ```
 
-In theory, the efficient tangent portoflio should just be the market portfolio. As such, the weights of the efficient tangent portfolio should be given by: $Weight_{S_i}=\frac{Price_{S_i}}{Marketsize}$. Therefore, there would be no shorting needed to obtain the efficient tangent portfolio. However, we find that the efficient portfolio indeed contains significant shorting of stocks. This is because we are only working with a small sample of the entire market, and that some of the analyzed stocks have performed poorly in the sample period. A stock with expected negative returns should be shorted, and that is what happens in our portfolio when we construct it based on past returns.
 
-Transaction costs and estimation dificulties are the potential issues when implementing the market portfolio in reality. To implement the market portfolio in reality, one would have to constantly update the portfolio weights. The stock prices are constantly changing and so is the optimal weight of the market portfolio. Transaction costs include expenses to the stock exchange and costs associated with frequent trading of low volume stocks that often have high bid-ask spreads. Furthermore, estimating the optimal portfolio weight of all stocks and updating that estimation frequently requires expensive data-access. As such, it is often cheaper for an investor to buy an MSCI World ETF, which mimics the market portfolio.
 
-The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market line. On the capital market line, stocks have the highest possible expected return for a given volatility. As such, the Sharpe ratio of the market portfolio will be higher than individual assets, which is also clearly illustrated in the figure above.
+The tangency portfolio weights seem well-balanced considering the limited diversification opportunities in the estimation. Poorly performing stocks are shorted to increase the weight of well performing stocks. However, the portfolio weights are not consistent under CAPM assumptions. Here, the eﬀicient tangent portfolio is the market portfolio where all stocks are weighted according to their market values: $w_i=\frac{P_i}{\Sigma^n_{j=1}P_j}$, where $w_i$ is the weight of stock i, $P_i$ is the price of stock i, and $\Sigma^n_{j=1}P_j$ is the sum of the price of all stocks (the value of the entire market). Therefore, there should be no shorting needed to obtain the eﬀicient tangent portfolio. However, as @fig-tw shows, we find that it requires significant shorting of stocks to obtain the tangent portfolio. We did not expect a result in accordance with CAPM because our portfolio is composed of only 27 large-cap stocks which is a small subset of the entire market of which the CAPM theory builds upon.
+
+When implementing this efficient tangent portfolio in reality, one should consider issues such as transactions costs and estimation issues. The portfolio weights must be updated constantly because the stock prices are fluctuating, which results in high transactions costs. Furthermore, both $\mu$ and $\Sigma$ used for optimization are subject to estimation uncertainty, increasing risk and deviations from the expected outcomes.
+
+However, the efficient tangent portfolio has the maximum attainable Sharpe ratio of 1.38 when comprising a portfolio of only the Dow Jones 30 index. The Sharpe Ratio is significantly higher than that of AAPL, which makes sense as AAPL is only one single stock. AAPL is included in the efficient tangent portfolio, so we could at least get that Sharpe Ratio. Instead,the efficient tangent portfolio optimizes the risk/return tradeoff accross all 27 stocks.
 
 **Exercise 5**  
 Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
