@@ -40,7 +40,7 @@ tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                    'MRK', 'DIS', 'NKE', 'MMM', 'KO', 'WMT', 
                    'DOW', 'CSCO', 'INTC', 'VZ']
 return_col = 'log_return' # alternatively use 'ret' to get standard returns
-print(Asfyhn er en champ)
+
 ```
 
 ```{python}
