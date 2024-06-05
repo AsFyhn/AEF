@@ -36,7 +36,7 @@ from scipy.optimize import minimize
 
 #Connecting to the database
 tidy_finance = sqlite3.connect(
-    database=f"/Users/asbjornfyhn/Desktop/Emp Fin/data/tidy_finance_python.sqlite"
+    database=f"/Users/emilkolko/Downloads/tidy_finance_python.sqlite"
 )
 
 #Reading in crsp_monthly dataset
@@ -70,7 +70,7 @@ The CRSP Monthly dataset contains both observations before 1962 and after 2020. 
 The portfolio choice problem for a transactions-cost adjusted certainty equivalent maximization with risk aversion parameter $\gamma$ is given by
 
 $$
-\omega_{t+1}^* = \arg \: \max \: \left( \hat{\omega}^\prime \mu - \nu_t(\omega, \omega_{t^+}, \beta) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)
+\omega_{t+1}^* = \arg \: \max \: \left( \hat{\omega}^\prime \mu - \nu_t(\omega, \omega_{t^+}, \lambda) - \frac{\gamma}{2} \omega^\prime \hat{\Sigma} \omega \right)
 $$
 
 Where ${\omega \in \mathbb{R}^N, \, \iota^\prime \omega = 1}$
@@ -78,7 +78,7 @@ Where ${\omega \in \mathbb{R}^N, \, \iota^\prime \omega = 1}$
 In the mandatory assignment the proposed transaction costs are specified as 
 
 $$
-TC(\omega,\omega_{t^+})=\lambda(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+})
+\nu_t(\omega, \omega_{t^+}, \lambda)=TC(\omega,\omega_{t^+})=\lambda(\omega-\omega_{t^+})^\prime\Sigma(\omega-\omega_{t^+})
 $$ 
 
 To follow the proofs presented in Hautsch & Voigt (2019) we define $\lambda\equiv\frac{\beta}{2}$ where $\beta>0$ is just a cost parameter like $\lambda$.
@@ -99,7 +99,7 @@ $$
 \Sigma^*=\left(1+\frac{\beta}{\gamma}\right)\Sigma \;\; \text{and} \;\; \mu^*=\mu+\beta\Sigma\omega_{t^+}
 $$
 
-With these new return parameters, we can derive a closed-form solution for the mean-variance efficient portfolio. We compute the mean-variance efficient portfolio by solving for $\gamma$:
+With these new return parameters, we can derive a closed-form solution for the mean-variance efficient portfolio with the specified transaction costs:
 
 $$
 \omega_{t+1}^* = \frac{1}{\gamma} \left( \Sigma^{*-1} - \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1} \iota\iota^\prime\Sigma^{*-1}\right) \mu^* + \frac{1}{\iota^\prime \Sigma^{*-1}\iota} \Sigma^{*-1}\iota 
@@ -113,16 +113,16 @@ $$
 
 where $\omega_{t+1}$ is the efficient portfolio without transaction costs and risk aversion parameter $\gamma+\beta$.
 
-$\omega^{mvp}=\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1}\iota$ is the minimum variance allocation.
+$\omega^{mvp}=\frac{1}{\iota^\prime \Sigma^{-1}\iota} \Sigma^{-1}\iota$ is the minimum variance portfolio (mvp).
 
-We see that the optimal weights are a linear combination of the efficient portfolio without transaction costs and the difference between the weights of the minimum variance portfolio and the portfolio before reallocation. The weight $\frac{\beta}{\beta+\gamma}$ only depends on the risk aversion and the cost parameter. Thus, the weight $\frac{\beta}{\beta+\gamma}$ is not affected by $\Sigma$. Only $\omega_{t+1}$ and $\omega^{mvp}$ is affected by $\Sigma$. Therefore, the effect of making transaction costs proportional to volatility is ambiguous and depends on how $\beta$ and $\Sigma$ affect each other.
+We see that the optimal weights are a linear combination of the efficient portfolio without transaction costs and the difference between the mvp and the portfolio just before reallocation. The weight $\frac{\beta}{\beta+\gamma}$ only depends on the risk aversion and the cost parameter. Thus, the weight $\frac{\beta}{\beta+\gamma}$ is not affected by $\Sigma$. Only $\omega_{t+1}$ and $\omega^{mvp}$ is affected by $\Sigma$. Therefore, the regulatory effect of making transaction costs proportional to volatility is ambiguous and depends on how $\beta$ and $\Sigma$ affect each other.
 
-A simpler case discussed in the lectures is when we model exogenous quadratic transactions costs. Here the effect of higher volatility has a clear effect. Periods with high volatility shifts the optimal portfolio allocation towards the global minimum-variance portfolio. Thus, assuming quadratic transaction costs not related to volatility, provides a result that intuitively makes sense. However, this type of transaction costs are not very realistic (Hautsch & Voigt 2019)
+A simpler case discussed in the lectures is when we model exogenous quadratic transactions costs. Here the effect of higher volatility has a clear effect. Periods with high volatility shifts the optimal portfolio allocation towards the global mvp. Thus, assuming quadratic transaction costs not related to volatility, provides a result that intuitively makes sense. However, this type of transaction costs are not very realistic (Hautsch & Voigt 2019)
 
-From a supply/demand point of view, endogenous transaction costs linked to volatility makes sense. In a high volatile environment, investors reallocate their portfolio more frequently to maintain optimal portfolio weights. Economic theory suggests that a higher demand must yield a higher price. Therefore, linking transaction costs to volatility makes sense.
+From a supply/demand point of view, quadratic transaction costs linked to volatility makes sense. In a high volatile environment, investors reallocate their portfolio more frequently to maintain optimal portfolio weights. Economic theory suggests that a higher demand must yield a higher price. Therefore, linking transaction costs to volatility makes sense.
 
 **Bullet 2**
-We now write a function that computes the optimal weight for different values of the transaction cost parameter $\beta\equiv\lambda*2$. This is done by computing the optimal portfolio weights for rising betas, when we keep the initial allocation (minimum variance portfolio) constant. The optimal portfolio weights are presented relative to the minimum variance portfolio in the graph below. The "distance from MVP" is measured by the sum of absolute deviations from the MVP to the efficient portfolio.
+We now write a function that computes the optimal weight for different values of the transaction cost parameter $\beta\equiv\lambda*2$. This is done by computing the optimal portfolio weights for rising betas, when we keep the initial allocation (in our case the mvp) constant. The optimal portfolio weights are presented relative to the mvp in the graph below. The "distance from mvp" is measured by the sum of absolute deviations from the mvp to the efficient portfolio.
 ```{python}
 # Pivot the data to have stocks as columns and months as rows
 returns_pivot = crsp_monthly.pivot(index='month', columns='permno', values='ret_excess')
@@ -197,7 +197,7 @@ rebalancing_plot = (
                color="factor(gamma)", linetype="factor(gamma)")) +
     geom_line() +
     guides(linetype=None) +
-    labs(x="Beta", y="Distance from MVP",
+    labs(x="Beta", y="Distance from mvp",
          color="Risk aversion",
          title=("Portfolio weights for different risk aversion and "
                 "transaction cost"))
@@ -210,6 +210,8 @@ rebalancing_plot = (
 # | output : true
 rebalancing_plot.draw()
 ```
+
+We see that rising betas shifts the optimal portfolio allocation towards the mvp. The optimal allocation is drawn toward the efficient portfolio without transaction costs but the mvp act as an anchor in the presence of transaction costs. In our case, a rising beta has the same effect, as in the case with exogenous quadratic transactions costs. The rising beta means higher transaction costs, and the optimal portfolio is drawn towards the mvp. 
 
 **Exercise 3**
 
