@@ -335,7 +335,6 @@ res_figure3 = (
         y="Annualized expected return",
         title="Efficient frontier for all simulations") 
 )
-print("hello")
 ```
 ```{python}
 # | output : true
