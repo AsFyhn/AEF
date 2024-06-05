@@ -1,12 +1,11 @@
 ---
-title: "Mandatory Assignment 1"
-author: "Asbjørn Fyhn & Emil Beckett Kolko"
-date: "2024-03-08"
-execute: 
+title: Mandatory Assignment 1
+author: Asbjørn Fyhn & Emil Beckett Kolko
+date: '2024-03-08'
+execute:
   echo: false
   warning: false
   output: false
-jupyter: python3
 format:
   pdf:
     documentclass: article
@@ -19,11 +18,14 @@ format:
       - right=20mm
     cite-method: natbib
     fontsize: 12pt
+jupyter: python3
 ---
+
 In the following we complete the exercises for mandatory assignment 1.
 
 
 <!-- Exercise 1 -->
+
 ```{python}
 
 import pandas as pd 
@@ -40,12 +42,11 @@ tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                    'MRK', 'DIS', 'NKE', 'MMM', 'KO', 'WMT', 
                    'DOW', 'CSCO', 'INTC', 'VZ']
 return_col = 'log_return' # alternatively use 'ret' to get standard returns
-
-print(Asfyhn er en klaphat)
 ```
 
 ```{python}
-inputdf = yf.download(tickers=tickerlist,period='25y') 
+
+inputdf = yf.download(tickers=tickerlist,period='25y', interval="1d") 
 # inputdf = pd.read_pickle(r'DJ_comp.pkl')
 # transform the dataset
 df = (inputdf
@@ -83,15 +84,16 @@ mu = np.array(df.groupby('ticker')[return_col].mean()).T
 sigma = np.array(df.pivot(index='date',columns='ticker',values=return_col).cov())
 
 # Calculate Sharpe ratio for each stock
-sharpe_ratio = (mu - 0) / np.diag(sigma)
+sharpe_ratio = np.sqrt(12)*(mu - 0) / np.sqrt(np.diag(sigma))
 # Print the Sharpe ratio
 sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 ```
 
 **Exercise 1 and 2**  <!-- The code for this exercise is found above -->  
-Based on the monthly return series calculated earlier, we create a vector of the average monthly returns $\mu$ for each series and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratio, we use the formula: $Sharpe=\frac{return-r_f}{standarddeviation}$. The stock with the highest Sharpe ratio is `{python} sr_high` with a ration of `{python} sharpe_ratio.max().round(2)`.
+We retrieve the daily adjusted prices of all the constituents of the Dow Jones index from January 1st 2000 to December 31st, 2023 from Yahoo!Finance and remove all tickers with no continuous trading history. We calculate the monthly returns of each ticker and use these series to calculate a vector of the average monthly returns $\mu$ and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratios (S), we use the formula: $S_i=\frac{r_i}{\sigma_i}$, where $r_i$ is the annualized return and $\sigma_i$ is the annualized standard deviation for ticker i. The stock with the highest Sharpe ratio is `{python} sr_high` with a ratio of `{python} sharpe_ratio.max().round(2)`.
 
 ```{python}
+
 def calc_return_std(weights, mu, sigma_matrix, factor):
   """
   Calculate the expected return and standard deviation of a portfolio.
@@ -124,6 +126,7 @@ where $C\equiv\iota'\Sigma^{-1}\iota,\:D\equiv\iota'\Sigma^{-1}\mu,\:E\equiv\mu'
 * Lastly, in accordence with the mutual fund theorem, we compute the efficient frontier with a linear combination of the risk free rate (0 in this case) and the efficient market portfolio
 
 ```{python}
+
 def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
     """
     The function performs each of the following steps:
@@ -188,6 +191,7 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
 ```
 
 ```{python}
+
 cef = compute_efficient_frontier(mu_est=mu,sigma_est=sigma,yearly_factor=12)
 
 efpRet, efpVol = calc_return_std(weights=cef.efp_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
@@ -201,8 +205,8 @@ x = 'increases' if not (mvpSR > efpSR) else 'decreases'
 
 The minimum variance portfolio has an expected return of `{python} (mvpRet*100).round(2)` and a volatility of `{python} (mvpVol*100).round(2)`. While the volatility of the efficient portfolio that delivers two times the expected return of the minimum variance is `{python} (efpVol*100).round(2)`. We notice that the Sharpe ratio `{python} x` from `{python} mvpSR.round(2)` to `{python} efpSR.round(2)`.
 
-
 ```{python}
+
 #---- tangency portfolio
 # ¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
 #       connsider if there is a better way
@@ -248,15 +252,29 @@ res_figure = (
 ```
 
 ```{python}
-# | output : true
+#| output: true
+
 res_figure
 ```
 
 **Exercise 4**  
 The efficient tangency portfolio weights are displayed below:
+
 ```{python}
-# | output : true
-print(tan_weights.round(2))
+#| output: true
+#| fig-cap : "The weights of the Efficient Tangency Portfolio"
+#| fig-align : 'center'
+tan_weights
+# Create a DataFrame with the weights of the Efficient Tangency Portfolio
+w_tgc = pd.DataFrame({'Ticker': df['ticker'].unique(), 'Weight': tan_weights})
+
+# Create the plot with rotated text within each bar
+(ggplot(w_tgc, aes(x='Ticker', y='Weight'))
+        + geom_bar(stat='identity', fill='skyblue', width=0.7)
+        + geom_text(aes(label=round(w_tgc['Weight'], 3)), angle=90, va='center', color='black', size=10)
+        + labs(x='Ticker', y='Weight')
+        + theme_minimal()
+        + theme(axis_text_x=element_text(angle=90, vjust=0.5, hjust=0.5)))
 ```
 
 In theory, the efficient tangent portoflio should just be the market portfolio. As such, the weights of the efficient tangent portfolio should be given by: $Weight_{S_i}=\frac{Price_{S_i}}{Marketsize}$. Therefore, there would be no shorting needed to obtain the efficient tangent portfolio. However, we find that the efficient portfolio indeed contains significant shorting of stocks. This is because we are only working with a small sample of the entire market, and that some of the analyzed stocks have performed poorly in the sample period. A stock with expected negative returns should be shorted, and that is what happens in our portfolio when we construct it based on past returns.
@@ -269,7 +287,9 @@ The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market li
 Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
 
 **Exercise 6 and 7**  
+
 ```{python}
+
 # simulating returns 
 def simulate_returns(periods=200,
                      expected_returns=mu,
@@ -337,12 +357,16 @@ res_figure3 = (
         title="Efficient frontier for all simulations") 
 )
 ```
+
 ```{python}
-# | output : true
+#| output: true
+
 res_figure2
 ```
+
 ```{python}
-# | output : true
+#| output: true
+
 res_figure3
 ```
 
@@ -375,8 +399,10 @@ We compute the efficient tangent portfolio for each simulated return sample, ass
 
 The histogram shows Sharpe Ratios for the 100 simulated tangency portfolios. The red dashed line marks the true Sharpe Ratio derived from true parameters.
 We note that for most of the simulations, the sharpe ratios are below the one derived with true parameters. 
+
 ```{python}
-# | output : true
+#| output: true
+
 # plot histogram of sharpe ratios
 (
     ggplot(pd.DataFrame([simdraws[i]['Sharpe Ratio'] for i in range(simLength)],columns=['Sharpe Ratio'])) + 
@@ -395,3 +421,4 @@ When we increase the sample size periods, our results asymptotically moves towar
 The figure shows that the estimated frontiers are not on par with the true efficient frontier. This is because the efficient market portfolio is derived from past data which is not a precise indicator of future returns and volatility.
 
 Unfortunately we where not able to find any alternative allocation strategies to improve the estimates' shortfall. Therefore, we where not able to complete the rest of exercise 10.
+
