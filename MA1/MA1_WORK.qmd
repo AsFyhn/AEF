@@ -8,7 +8,8 @@ execute:
   output: false
 jupyter: python3
 format:
-  pdf: 
+  pdf:
+    documentclass: article
     number-sections: true
     colorlinks: true
     geometry:
@@ -334,6 +335,7 @@ res_figure3 = (
         y="Annualized expected return",
         title="Efficient frontier for all simulations") 
 )
+print("hello")
 ```
 ```{python}
 # | output : true
@@ -384,7 +386,7 @@ We note that for most of the simulations, the sharpe ratios are below the one de
     labs(x="Shapre Ratio",
         y="Freq",
         title="Share")
-)
+).draw()
 ```
 
 **Exercise 10**  
