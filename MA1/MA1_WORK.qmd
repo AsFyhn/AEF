@@ -35,6 +35,7 @@ from datetime import datetime as dt
 from plotnine import *
 from mizani.formatters import percent_format
 
+np.random.seed(100)
 # define list of tickers
 tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                'V', 'AMGN', 'TRV', 'AXP', 'BA', 'HON', 'JPM',
@@ -46,8 +47,8 @@ return_col = 'ret' # alternatively use 'ret' to get standard returns
 
 ```{python}
 
-inputdf = yf.download(tickers=tickerlist,period='25y', interval="1d") 
-# inputdf = pd.read_pickle(r'DJ_comp.pkl')
+# inputdf = yf.download(tickers=tickerlist,period='25y', interval="1d") 
+inputdf = pd.read_pickle(r'DJ_comp.pkl')
 # transform the dataset
 df = (inputdf
       .get('Adj Close')
@@ -127,7 +128,7 @@ where $C\equiv\iota'\Sigma^{-1}\iota,\:D\equiv\iota'\Sigma^{-1}\mu,\:E\equiv\mu'
 
 ```{python}
 
-def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1) -> pd.DataFrame:
+def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1, verbose=False) -> pd.DataFrame:
     """
     The function performs each of the following steps:
     1. Compute the minimum variance portfolio weight mvp_weights for the input Sigma_est. 
@@ -161,7 +162,7 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     mvp_weights = sigma_inv @ iota
     mvp_weights = mvp_weights/mvp_weights.sum()
     mvp_return,mvp_volatility =  calc_return_std(mvp_weights,mu,sigma_est,yearly_factor)
-    print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
+    
     results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
 
     #----- efficient frontier portfolio
@@ -173,8 +174,11 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
     efp_weights = mvp_weights + lambda_tilde/2 * (sigma_inv@mu_est - D* mvp_weights ) 
     efp_return,efp_vol =  calc_return_std(efp_weights,mu,sigma_est,yearly_factor)
-    print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
     results.efp_weights = efp_weights # store efficient frontier portfolio weights in object
+
+    if verbose: 
+      print(f'Return of the minimum variance portfolio is: {mvp_return:.2f} and its volatility is {mvp_volatility:.2f}')
+      print(f'Return of the efficient frontier portfolio is: {efp_return:.2f} and its volatility is {efp_vol:.2f}')
 
     #----- mutual fund theorem
     a = np.linspace(-0.2, 1.2, 121)
@@ -240,23 +244,30 @@ res_figure = (
   ) +
   labs(x="Annualized standard deviation",
        y="Annualized expected return",
-       title="Efficient frontier for DOW index constituents") +
+       ) +
   scale_x_continuous(labels=percent_format()) +
-  scale_y_continuous(labels=percent_format())
+  scale_y_continuous(labels=percent_format()) +
+  theme_minimal() + 
+  theme(legend_position=(0.15,0.9),legend_title=element_blank(),legend_direction='vertical')
 )
 ```
 
 ```{python}
 #| output: true
 #| tbl-cap: "Portfolio Statistics"
+#| fig-height: 4
+#| fig-width: 6
 pd.DataFrame({'Tangency Portfolio': [tanRet, tanVol, tanRet/tanVol],
               'Efficient Frontier Portfolio': [efpRet, efpVol, efpSR],
               'Minimum Variance Portfolio': [mvpRet, mvpVol, mvpSR]},
-             index=['Return', 'Volatility', 'Sharpe Ratio'])
+             index=['Return', 'Volatility', 'Sharpe Ratio']).round(2)
 ```
 
 ```{python}
 #| output: true
+#| fig-cap: "Efficient frontier for DOW index constituents"
+#| fig-height: 4
+#| fig-width : 6
 
 res_figure
 ```
@@ -268,7 +279,7 @@ The efficient tangency portfolio weights are displayed below:
 #| output: true
 #| fig-cap : "The weights of the Efficient Tangency Portfolio"
 #| fig-align : 'center'
-tan_weights
+#| fig-pos: 'h'
 # Create a DataFrame with the weights of the Efficient Tangency Portfolio
 w_tgc = pd.DataFrame({'Ticker': df['ticker'].unique(), 'Weight': tan_weights})
 
@@ -278,7 +289,8 @@ w_tgc = pd.DataFrame({'Ticker': df['ticker'].unique(), 'Weight': tan_weights})
         + geom_text(aes(label=round(w_tgc['Weight'], 3)), angle=90, va='center', color='black', size=10)
         + labs(x='Ticker', y='Weight')
         + theme_minimal()
-        + theme(axis_text_x=element_text(angle=90, vjust=0.5, hjust=0.5)))
+        + theme(axis_text_x=element_text(angle=90, vjust=0.5, hjust=0.5))
+        )
 ```
 
 In theory, the efficient tangent portoflio should just be the market portfolio. As such, the weights of the efficient tangent portfolio should be given by: $Weight_{S_i}=\frac{Price_{S_i}}{Marketsize}$. Therefore, there would be no shorting needed to obtain the efficient tangent portfolio. However, we find that the efficient portfolio indeed contains significant shorting of stocks. This is because we are only working with a small sample of the entire market, and that some of the analyzed stocks have performed poorly in the sample period. A stock with expected negative returns should be shorted, and that is what happens in our portfolio when we construct it based on past returns.
@@ -290,7 +302,7 @@ The maximum attainable Sharpe ratio is the Sharpe ratio of the capital market li
 **Exercise 5**  
 Provided with the function simulate_returns, we're able to simulate monthly returns of stocks for a given number of stocks. The function takes three parameters: periods, mu and sigma. Firstly, periods define the number of monthly return for each stock the function should return. Secondly, mu define the mean of each draw which comes from a normal distribution. Thirdly, sigma is the variance-covariance which is used to define the standard deviation for the disitribution. But also the covariance comes into play as the function np.random.multivariate_normal takes the covariance into account. In our implentation of the simulation draw, we set the seed to 100.
 
-**Exercise 6 and 7**  
+**Exercise 6**  
 
 ```{python}
 
@@ -318,60 +330,75 @@ def calc_eff_tang_port(x):
   tan_weights = tan_weights[:-1]
   return tan_weights 
 
-
-simLength = 100
-simdraws = {i:{} for i in range(simLength)}
-np.random.seed(100)
-for i in range(simLength):
-  if i % 10==0: print(f'{i+1} out of {simLength}')
+def do_single_simulation():
   draw1 = pd.DataFrame(simulate_returns(periods=200,expected_returns=cef.inputs['mu'],covariance_matrix=cef.inputs['sigma']))
   mu_sim_est = np.array(draw1.mean()).T
   sigma_sim_est = np.array(draw1.cov())
-  eff = compute_efficient_frontier(mu_est=mu_sim_est,sigma_est=sigma_sim_est,yearly_factor=12)
+  eff = compute_efficient_frontier(mu_est=mu_sim_est,sigma_est=sigma_sim_est,yearly_factor=12,verbose=False)
   sim_df = eff.res
-  sim_df['sim_draw_no'] = i
-  tan_weights = calc_eff_tang_port(x=eff)
-  tanRet, tanVol = calc_return_std(weights=tan_weights,mu=eff.inputs['mu'],sigma_matrix=eff.inputs['sigma'],factor=eff.inputs['yearly_factor'])
-  simdraws[i] = {'Frontier':sim_df,
-                          'Tangency Weights': tan_weights,
-                          'Sharpe Ratio': tanRet/tanVol,
+
+  sim_tan_weights = calc_eff_tang_port(x=eff)
+  sim_tanRet, sim_tanVol = calc_return_std(weights=sim_tan_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
+  return {'Frontier':sim_df,
+                          'Tangency Weights': sim_tan_weights,
+                          'Sharpe Ratio': sim_tanRet/sim_tanVol,
                           'input':{'mu':mu_sim_est,
                                    'sigma':sigma_sim_est,
                                    'data':draw1}}
+```
+
+```{python}
+#| output: true
+#| label : fig-oneobservedfrontier
+#| fig-cap: "Single observed and true frontier"
+
+
+# plot of first simulatioj
+single_sim_df = do_single_simulation()['Frontier']
+
+plot_df = pd.concat([single_sim_df.assign(true='Simulated'),cef.res.assign(true='True')])
+
+res_figure2 = (
+  ggplot(plot_df, aes(x="sd", y="mu",color='true'),) +
+  geom_point() + 
+  labs(x="Annualized standard deviation",
+       y="Annualized expected return",) +
+  scale_x_continuous(labels=percent_format()) +
+  scale_y_continuous(labels=percent_format()) +
+  theme_minimal() + 
+  theme(legend_position=(0.15,0.9),legend_title=element_blank(),legend_direction='vertical')
+)
+res_figure2
+
+```
+
+**Exercise 7**  
+
+```{python}
+simLength = 100
+simdraws = {i:{} for i in range(simLength)}
+
+for i in range(simLength):
+  simdraws[i] = do_single_simulation()
+  simdraws[i]['Frontier']['sim_draw_no'] = i
+```
+
+```{python}
+#| output: true
+#| label : fig-simulationfrontiers
+#| fig-cap: "Observed frontiers and true frontier"
 
 sim_df = pd.concat([simdraws[i]['Frontier'] for i in range(simLength)])
-# plot of first simulatioj
-res_figure2 = (
-  ggplot(sim_df.loc[sim_df['sim_draw_no']==0], aes(x="sd", y="mu")) +
-  geom_point() + 
-  geom_point(cef.res, colour='red') + 
-  labs(x="Annualized standard deviation",
-       y="Annualized expected return",
-       title="Efficient frontier for true parameters and simulated") +
-  scale_x_continuous(labels=percent_format()) +
-  scale_y_continuous(labels=percent_format())
-)
-# plot of all 100 simulations
-res_figure3 = (
+(
     ggplot(sim_df, aes(x="sd", y="mu",group='sim_draw_no')) +
     geom_point(alpha=0.05)  # Plot first element with label
-    +geom_point(cef.res.assign(sim_draw_no = -1),alpha=1,colour='black') + 
+    +geom_point(cef.res.assign(sim_draw_no = -1),alpha=1,colour='#57d3db') + 
     labs(x="Annualized standard deviation",
         y="Annualized expected return",
-        title="Efficient frontier for all simulations") 
+        ) +
+        theme_minimal() +
+        theme(legend_position=(0.15,0.9),legend_title=element_blank(),legend_direction='vertical')
 )
-```
-
-```{python}
-#| output: true
-
-res_figure2
-```
-
-```{python}
-#| output: true
-
-res_figure3
 ```
 
 This section explores the deviations between the theoretical efficient frontier and its estimates obtained through sample data. We achieve this by simulating multiple sample return series and constructing the corresponding efficient frontiers.
@@ -406,16 +433,22 @@ We note that for most of the simulations, the sharpe ratios are below the one de
 
 ```{python}
 #| output: true
+#| label : fig-histsharperatios
+#| fig-cap: "Distribution of sharpe-ratios"
 
 # plot histogram of sharpe ratios
+sharpe_df = pd.DataFrame([simdraws[i]['Sharpe Ratio'] for i in range(simLength)],columns=['Sharpe Ratio'])
+
 (
-    ggplot(pd.DataFrame([simdraws[i]['Sharpe Ratio'] for i in range(simLength)],columns=['Sharpe Ratio'])) + 
+    ggplot(sharpe_df) + 
     aes(x = 'Sharpe Ratio') +
-    geom_histogram(binwidth=0.1) +
+    geom_histogram(binwidth=0.01) +
     geom_vline(xintercept=tanRet/tanVol,colour='red',linetype='dashed') + 
-    labs(x="Shapre Ratio",
+    labs(x="Sharpe Ratio",
         y="Freq",
-        title="Share")
+        title="Share") +
+    theme_minimal() +
+    theme(legend_position=(0.15,0.9),legend_title=element_blank(),legend_direction='vertical')
 ).draw()
 ```
 
@@ -425,4 +458,3 @@ When we increase the sample size periods, our results asymptotically moves towar
 The figure shows that the estimated frontiers are not on par with the true efficient frontier. This is because the efficient market portfolio is derived from past data which is not a precise indicator of future returns and volatility.
 
 Unfortunately we where not able to find any alternative allocation strategies to improve the estimates' shortfall. Therefore, we where not able to complete the rest of exercise 10.
-
