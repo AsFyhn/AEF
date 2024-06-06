@@ -70,8 +70,7 @@ factors_ff3_monthly = pd.read_sql_query(
 
 We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
 
-When computing the momentum, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. If we had used the stock price in our computations as opposed to the market capitalization, such events would have artificially affected our calculated momentum.
-
+We do not expect significant differences between computing momentum as the relative change in prices compared to the relative change in market capitalization. In this assignment, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. Such events affect stock prices without affecting returns. However, when using the market capitalization, events such as dividend payouts, decrease market capitalization without affecting returns. Therefore, there are problems with both types of calculations. Lucklily, both the stock price and market capitalization has been adjusted accordingly in the CRSP dataset. Therefore, we should not face any problems by calculating momentum with either stocks prices or market capitalization.
 
 
 ```{python}
@@ -266,7 +265,9 @@ plot_momentum_portfolios_summary = (
 plot_momentum_portfolios_summary.draw()
 ```
 
-We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with Jegadeesh and Titman (1993). The 2nd and 3rd decile stocks are more aligned with their paper, showing negative alphas, and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
+We see that the lowest decile stocks offer high alphas compared to the rest of the stocks even though we expected them to have negative alphas in accordance with Jegadeesh and Titman (1993). One possible explanation for this, is that stocks that pays out dividends, will decrease their market cap (and therefore have low momentum) while maintaining returns. However, the CRSP dataset should have adjusted for this, and therefore we will not investigate this notion further. 
+
+The rest of the momentum decile stocks are more aligned with our expectations and the findings in Jegadeesh and Titman (1993). The 2nd and 3rd decile stocks have negative alphas, and the stocks in the 5th decile and up offer positive alpha, which represents an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
 
 Specifically, we examine the alpha and beta of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which seems counter-intuitive. We analyze the alpha and beta of this portfolio with t-statistics. Here our hypothesises are:
 

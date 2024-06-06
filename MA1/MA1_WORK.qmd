@@ -21,7 +21,7 @@ format:
 jupyter: python3
 ---
 
-In the following we complete the exercises for mandatory assignment 1.
+In the following, we complete the exercises for Mandatory Assignment 1.
 
 
 <!-- Exercise 1 -->
@@ -92,7 +92,7 @@ sr_high = df.groupby('ticker')['ticker'].first().iloc[sharpe_ratio.argmax()]
 ```
 
 **Exercise 1 and 2**  <!-- The code for this exercise is found above -->  
-We retrieve the daily adjusted prices of all the constituents of the Dow Jones index from January 1st 2000 to December 31st, 2023 from Yahoo!Finance and remove all tickers with no continuous trading history. We calculate the monthly returns of each ticker and use these series to calculate a vector of the average monthly returns $\mu$ and a variance-covariance matrix $\Sigma$. To calculate the Sharpe-ratios (S), we use the formula: $S_i=\frac{r_i}{\sigma_i}$, where $r_i$ is the annualized return and $\sigma_i$ is the annualized standard deviation for ticker i. The stock with the highest Sharpe ratio is `{python} sr_high` with a ratio of `{python} sharpe_ratio.max().round(3)`.
+We retrieve the daily adjusted prices of all the constituents of the Dow Jones index from January 1st, 2000 to December 31st, 2023 from Yahoo!Finance and remove all tickers with no continuous trading history. We calculate the monthly returns of each ticker and use these series to calculate a vector of the average monthly returns $\mu$ and a variance-covariance matrix $\Sigma$. To calculate the Sharpe ratios (S), we use the formula: $S_i=\frac{r_i}{\sigma_i}$, where $r_i$ is the annualized return and $\sigma_i$ is the annualized standard deviation for ticker i. The stock with the highest Sharpe ratio is `{python} sr_high` with a ratio of `{python} sharpe_ratio.max().round(3)`.
 
 ```{python}
 
@@ -115,7 +115,7 @@ def calc_return_std(weights, mu, sigma_matrix, factor):
 ```
 
 **Exercise 3**  
-First of we create a function compute_efficient_frontier which return an object with the inputs that consists of a vector of the estimated expected return, the estimated variance-covariance matrix and a factor that is used to annualise the return, minimum variance portfolio, efficient portfolio that delivers two times the expected return of the minimum variance portfolio and lastly the efficient frontier. We have calculated the inputs as follows:
+First, we create a function 'compute_efficient_frontier' which returns an object with the inputs consisting of a vector of the estimated expected return, the estimated variance-covariance matrix and a factor that is used to annualize the return, the minimum variance portfolio, the efficient portfolio that delivers two times the expected return of the minimum variance portfolio, and, lastly, the efficient frontier. We have calculated the inputs as follows:
 
 * The sample average return vector: $\hat{\mu}=\frac{1}{T}\Sigma^T_{t=1}r_t$
 * The variance co-variance matrix: $\hat{\Sigma}=\frac{1}{T-1}\Sigma^T_{t=1}(r_t-\hat{\mu})(r_t-\hat{\mu})'$
@@ -125,7 +125,7 @@ where the solution is $\omega_{mvp}=\frac{\Sigma^{-1}\iota}{\iota'\Sigma^{-1}\io
 * And the efficient portfolio as follows: $\omega_{eff}(\bar{\mu})=\text{arg\:min}\:\omega'\Sigma\omega\:\:s.t.\:\omega'\iota=1\:\text{and}\:\omega'\mu\geq\bar{\mu}$,  
 where the solution is $\omega_{eff}(\bar{\mu})=\omega_{mvp}+\frac{\tilde{\lambda}}{2}\left(\Sigma^{-1}\mu-\frac{D}{C}\Sigma^{-1}\iota\right)$,  
 where $C\equiv\iota'\Sigma^{-1}\iota,\:D\equiv\iota'\Sigma^{-1}\mu,\:E\equiv\mu'\Sigma^{-1}\mu,\:\:\text{and}\:\tilde{\lambda}=2\frac{\bar{\mu}-D/C}{E-D^2/C}$  
-* Lastly, in accordence with the mutual fund theorem, we compute the efficient frontier with a linear combination of the risk free rate (0 in this case) and the efficient market portfolio
+* Lastly, in accordance with the mutual fund theorem, we compute the efficient frontier with a linear combination of the risk free rate (0 in this case) and the efficient market portfolio
 
 ```{python}
 
