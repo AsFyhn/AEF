@@ -35,7 +35,8 @@ from datetime import datetime as dt
 from plotnine import *
 from mizani.formatters import percent_format
 
-np.random.seed(100)
+seed = 100
+np.random.seed(seed)
 # define list of tickers
 tickerlist = ['UNH', 'MSFT', 'GS', 'HD', 'CAT', 'CRM', 'MCD',
                'V', 'AMGN', 'TRV', 'AXP', 'BA', 'HON', 'JPM',
@@ -128,6 +129,17 @@ where $C\equiv\iota'\Sigma^{-1}\iota,\:D\equiv\iota'\Sigma^{-1}\mu,\:E\equiv\mu'
 
 ```{python}
 
+def mean_variance_portfolio(sigma_inv):
+  """
+
+  """
+  N = sigma_inv.shape[0]
+  iota = np.ones(N)
+  mvp_weights = sigma_inv @ iota
+  mvp_weights = mvp_weights/mvp_weights.sum()
+  return mvp_weights
+
+
 def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_factor: int=1, verbose=False) -> pd.DataFrame:
     """
     The function performs each of the following steps:
@@ -152,15 +164,14 @@ def compute_efficient_frontier(mu_est: np.array, sigma_est: np.array, yearly_fac
     results.inputs['sigma'] = sigma_est
     results.inputs['yearly_factor'] = yearly_factor
 
-    N = mu_est.shape[0]
+    N = mu_est.size
     if sigma_est.shape[0] != N: 
         raise ValueError('The size length of vector mu_est should be the same as for sigma_est')
     iota = np.ones(N)
     sigma_inv = np.linalg.inv(sigma_est) 
 
     #----- minimum variance portfolio
-    mvp_weights = sigma_inv @ iota
-    mvp_weights = mvp_weights/mvp_weights.sum()
+    mvp_weights = mean_variance_portfolio(sigma_inv=sigma_inv)
     mvp_return,mvp_volatility =  calc_return_std(mvp_weights,mu,sigma_est,yearly_factor)
     
     results.mvp_weights = mvp_weights  # store minimum variance portfolio weights in object
@@ -324,30 +335,53 @@ def simulate_returns(periods=200,
        size=periods
     )
 
-def calc_eff_tang_port(x):
-  d = np.vstack((x.inputs['sigma'],np.ones(27)))
-  c = np.append(x.inputs['mu'],0)
-  e = np.hstack((d,c.reshape(c.shape[0],1)))
-  q = np.append(np.zeros(x.inputs['mu'].shape[0]),1)
-  tan_weights = np.linalg.inv(e) @ q
-  tan_weights = tan_weights[:-1]
-  return tan_weights 
+def calc_eff_tang_port(mu, sigma, rf=0):
+  """
+  Calculates the weights of the efficient tangent portfolio.
+
+  Parameters:
+  - sigma: The covariance matrix of asset returns.
+  - mu: The expected returns of the assets.
+  - rf: The risk-free rate of return (default is 0).
+
+  Returns:
+  - tan_weights: The weights of the efficient tangent portfolio.
+
+  """
+  sigma_inv = np.linalg.inv(sigma) 
+  tan_weights =  sigma_inv@(mu - rf) / (np.ones(mu.shape) @ sigma_inv @ (mu - rf))
+
+  return tan_weights
+
+def sort_portfolio(mu):
+  sorted_mu = np.sort(mu)[::-1]
+  sort_weight = sorted_mu/np.sum(mu)
+  return sort_weight
 
 def do_single_simulation():
-  draw1 = pd.DataFrame(simulate_returns(periods=200,expected_returns=cef.inputs['mu'],covariance_matrix=cef.inputs['sigma']))
-  mu_sim_est = np.array(draw1.mean()).T
-  sigma_sim_est = np.array(draw1.cov())
+  """
+  This function performs a single simulation by generating random returns based on the given parameters and computes the efficient frontier, tangency weights, Sharpe ratio, and other relevant information.
+
+  Returns:
+  - Frontier: DataFrame containing the efficient frontier.
+  - Tangency Weights: Array of weights for the tangency portfolio.
+  - Sharpe Ratio: The Sharpe ratio of the tangency portfolio.
+  - input: Dictionary containing the input parameters used in the simulation, including the estimated mean returns (mu), covariance matrix (sigma), and the simulated returns data (data).
+  """
+  draw = simulate_returns(periods=200,expected_returns=cef.inputs['mu'],covariance_matrix=cef.inputs['sigma'])
+  mu_sim_est = np.mean(draw,axis=0).T
+  sigma_sim_est = np.cov(draw,rowvar=False)
   eff = compute_efficient_frontier(mu_est=mu_sim_est,sigma_est=sigma_sim_est,yearly_factor=12,verbose=False)
   sim_df = eff.res
 
-  sim_tan_weights = calc_eff_tang_port(x=eff)
+  sim_tan_weights = calc_eff_tang_port(mu=mu_sim_est, sigma=sigma_sim_est, rf=0)
   sim_tanRet, sim_tanVol = calc_return_std(weights=sim_tan_weights,mu=cef.inputs['mu'],sigma_matrix=cef.inputs['sigma'],factor=cef.inputs['yearly_factor'])
   return {'Frontier':sim_df,
                           'Tangency Weights': sim_tan_weights,
                           'Sharpe Ratio': sim_tanRet/sim_tanVol,
                           'input':{'mu':mu_sim_est,
                                    'sigma':sigma_sim_est,
-                                   'data':draw1}}
+                                   'data':draw}}
 ```
 
 ```{python}
@@ -461,3 +495,15 @@ When we increase the sample size periods, our results asymptotically moves towar
 The figure shows that the estimated frontiers are not on par with the true efficient frontier. This is because the efficient market portfolio is derived from past data which is not a precise indicator of future returns and volatility.
 
 Unfortunately we where not able to find any alternative allocation strategies to improve the estimates' shortfall. Therefore, we where not able to complete the rest of exercise 10.
+
+
+```{python}
+#| output: true
+
+# ewp is the weight of the equal weighted portfolio
+ewp = np.ones(mu.size)/mu.size
+
+print(calc_return_std(ewp,mu, sigma,12))
+
+
+```
