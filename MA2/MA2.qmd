@@ -44,7 +44,10 @@ from sklearn.linear_model import Ridge
 from sklearn.model_selection import (
   train_test_split, GridSearchCV, TimeSeriesSplit, cross_val_score
 )
+import os
+```
 
+```{python}
 #Connecting to the database
 tidy_finance = sqlite3.connect(
     database=f"../../data/tidy_finance_python.sqlite"
@@ -359,69 +362,93 @@ plot_momentum_longshort_year.draw()
 The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio delivers higher returns more consitently than both the low and high momentum portfolio which have positive alphas. 
 
 **Exercise 4** 
-In this exercise, we want to estimate a model where the excess return of a stock is linear dependent on its own 60 lags. The regression model looks as follows: 
 
-$r_{i,t+1} 0 \sum_{k=1}^{60} b_k r_{i,t-k} + \sum_{k=1}^{60} c_k r_{i,t-k}^2$
+We aim to estimate a model where a stock's excess return is linearly dependent on its own 60 previous lags. The regression model is as follows:
 
-First, we start by cleaning the dataset meaning that we remove the smallest stocks. More precisely, we remove the stocks with the 5% lowest market capitalization. 
+$$r_{i,t+1} = \sum_{k=1}^{60} b_k r_{i,t-k} + \sum_{k=1}^{60} c_k r_{i,t-k}^2$$
+
+To estimate the coefficients of this model, we will use ridge regression, a regularized version of OLS regression. Ridge regression helps reduce the variance of the estimates by adding a penalty term to the OLS regression.This penalty term is the sum of the squared coefficients multiplied by a constant, $\lambda$, a hyperparameter that must be chosen. The optimal value of $\lambda$ is found through cross-validation. The regression coefficient has a closed-form solution:
+
+$$\hat{\beta} = (X^TX + \lambda I)^{-1}X^Ty$$
+
+Here $\hat{\beta}$ represents the estimated coefficients, $X$ is the matrix of predictors, $y$ is the vector of the dependent variable, and $I$ is the identity matrix.
+
+First, we clean the dataset by removing the smallest stocks, specifically those with the lowest 20% market capitalization.
 
 ```{python}
-# remove all companies that has a mktcap that is below the 20th percentile
-for month in crsp_monthly["month"].unique():
-    mktcap_20 = crsp_monthly[crsp_monthly["month"] == month]["mktcap"].quantile(0.05)
-    crsp_monthly = crsp_monthly.loc[~((crsp_monthly['month'] == month) & (crsp_monthly['mktcap'] < mktcap_20))]
-
-# create 60 columns with the lagged ret_excess
-crsp_monthly_lags = crsp_monthly.copy(deep=True)
-for i in range(2, 62):
-    crsp_monthly_lags[f'ret_excess_lag_{i}'] = crsp_monthly_lags.groupby('permno')['ret_excess'].shift(i)
-    crsp_monthly_lags[f'ret_excess_lag_{i}_sq'] = crsp_monthly_lags[f'ret_excess_lag_{i}']**2
-
-crsp_monthly_lags.dropna(subset=[f'ret_excess_lag_{i}' for i in range(2, 62)],inplace=True)
-crsp_monthly_lags.set_index(['permno', 'month'], inplace=True)
-exog = crsp_monthly_lags[[f'ret_excess_lag_{i}' for i in range(2,62)]+[f'ret_excess_lag_{i}_sq' for i in range(2,62)]]
-endog = crsp_monthly_lags.loc[:,'ret_excess']
+ml_crps = crsp_monthly.copy(deep=True)
 ```
 
-Next, we demean the dependent variable $r_{i,t+1}$ by month by month subtracting the mean from series. Thus by construction, the mean of the excess return in each month is 0. At the same time, we standardize the lagged excess return by month by month dividing with the standard deviation. In each month, the standard deviation across the firms is one. 
+```{python}
+# set the percentile to 20%
+cut_off_quantile = 0.20
+# create a series with the cut_off_quantile for each month
+cut_off = ml_crps.groupby('month')['mktcap'].quantile(cut_off_quantile)
+# Filter out the stocks with market capitalization below the 5th percentile
+ml_crps = ml_crps[ml_crps['mktcap'] >= ml_crps['month'].map(cut_off)]
+```
 
 ```{python}
+# create a dataframe with lagged ex
+r_df = pd.concat([ml_crps.groupby('permno')['ret_excess'].shift(i) for i in range(2,62)],axis=1)
+r_df.columns = [col+f'_lag_{i+2}' for i, col in enumerate(r_df.columns.values)]
+r_sq_df = r_df**2
+r_sq_df.columns = [col.replace('ret_excess', 'ret_excess_sq') for col in r_sq_df.columns.values]
+ml_crps_lags = pd.concat([ml_crps, r_df, r_sq_df], axis=1)
+
+
+# remove all nan values that arises from the lagging
+ml_crps_lags.dropna(subset=[f'ret_excess_lag_{i}' for i in range(2, 62)],inplace=True)
+ml_crps_lags.set_index(['permno', 'month'], inplace=True)
+```
+
+We then demean the dependent variable $r_{i,t+1}$ by month, subtracting the mean from the series, ensuring the mean excess return in each month is zero. Additionally, we standardize the lagged excess returns by month, dividing each by the standard deviation, making the standard deviation across firms one.
+
+```{python}
+# create the exogenous and endogenous variables
+exog = ml_crps_lags.loc[:,[f'ret_excess_lag_{i}' for i in range(2,62)]+[f'ret_excess_sq_lag_{i}' for i in range(2,62)]]
+endog = ml_crps_lags.loc[:,'ret_excess']
+
 # Standardize the data - dependent variable has a mean of 0 and the predictors a standard deviation of 1
 endog = endog - endog.groupby('month').mean()
-exog = exog / exog.groupby('month').std()
+exog = (exog-exog.groupby('month').mean()) / exog.groupby('month').std()
 
 train_endog = endog.loc[endog.index.get_level_values('month') < '2000-01-01']
 train_exog = exog.loc[exog.index.get_level_values('month') < '2000-01-01']
 ```
 
-The entire dataset has now been cleaning and transformed in such a way that we are ready to take the analysis further. We will estimate regression coefficient using ridge regression. Thus, we will have to choose the hyperparameter, $\alpha$. 
+With the cleaned and transformed dataset, we proceed to choose the hyperparameter, $\lambda$, which minimizes the estimated mean squared prediction error (MSPE):
+$$\lambda^{opt} = \arg\:\min_{\lambda} MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (\hat{y}_t(\lambda) - y_t)^2 \right)$$
 
-The hyperparameter is chosen by minimizing the estimated mean squared prediction error, MSPE.
+where $\hat{y}_t(\lambda)$ is the predicted value of the dependent variable at time $t$ for a given $\lambda$ and $y_t$ is the true value of the dependent variable at time $t$.
 
-$MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (\hat{y}_t - y_t)^2 \right)$
-
-Before fine tuning the model, we divide our dataset into a training set for hyperparameter selection. Since MSPE can only be estimated, we employ cross-validation. This involves averaging the MSPE across K data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected.
+We divide the dataset into a training set for hyperparameter selection, using cross-validation to average the MSPE across K data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected.
 
 ```{python}
 initial_years = 5
 assessment_months = 48*4
 n_splits = 100
 length_of_year = 12
-alphas = np.logspace(-4, 4, 40)
 
 data_folds = TimeSeriesSplit(
   n_splits=n_splits, 
   test_size=assessment_months, 
   max_train_size=initial_years * length_of_year
 )
+lambdas = np.logspace(-4, 4, 40) # evenly spaced on a logscale
 ```
 
-We tune the model over a grid of alphas that goes from `{python} alphas.min().round(2)` to `{python} alphas.max().round(2)` with 100 datafolds. 
+
+We tune the model over a grid of $\lambda$ that is evenly spread on a logscale from `{python} lambdas.min().round(2)` to `{python} lambdas.max().round(2)` with 100 datafolds. 
 
 ```{python}
+
+lambdas = np.insert(lambdas,0,0) #insert zero
 params = {
-  "alpha": alphas,
+  "alpha": lambdas,
 }
+
+# create pipeline
 ridge_pipeline = Ridge(fit_intercept=False,max_iter=5000)
 
 finder = GridSearchCV(
@@ -437,35 +464,67 @@ finder.fit(
   train_exog, train_exog
 )
 
+# store the best estimator
 best_est = finder.best_estimator_
+
+# store optimal penaly parameter
+opt_lambda = best_est.get_params()['alpha']
+```
+
+```{python}
+#| output: true
+#| label: fig-tuning
+#| fig-cap: Root mean squared error for different penalty
+plot_df = pd.DataFrame({'RMSE':-finder.cv_results_['mean_test_score'],'lambda':lambdas})
+
+opt_rmse = plot_df.loc[plot_df['lambda']==opt_lambda,'RMSE'].iloc[0]
+
+plot_df['Sample'] = 'Full'
+plot_df = pd.concat([plot_df,plot_df.loc[plot_df['RMSE']<0.682].assign(Sample='Zoom')])
+
+(
+  ggplot(plot_df, 
+         aes(x="lambda", y="RMSE")) + 
+  geom_line()  +
+  facet_wrap("Sample",scales='free') +
+  labs(x="$\lambda$", y="RMSE",) +
+  scale_y_continuous() +
+  theme(legend_position="none") +
+  scale_x_log10() +
+  annotate("point", x = opt_lambda, y = opt_rmse, colour = "blue") +
+  theme_minimal()
+  ).draw()
+
+```
+
+After tuning, we set $\lambda$ to the optimal value (`{python} best_est.get_params()['alpha'].round(3)`) found, and estimate the model on the remaining dataset:
+
+```{python}
+# run the best estimator on the rest of the data
 best_est_fit = best_est.fit(train_exog, train_endog)
 coef = best_est_fit.coef_
 ```
 
-After tuning the model, we set alpha to `{python} best_est.get_params()['alpha'].round(3)`
-
-```{python}
-#| output: true
-heatmap = pd.DataFrame({'lag':range(2,len(coef)//2+2),'r':coef[len(coef)//2:],'r^2':coef[:-len(coef)//2]})
-( ggplot(heatmap) +
-  geom_col(aes(x='lag', y='r'), position='dodge', fill="blue", alpha=0.5) +  # Bar chart for 'r'
-  geom_point(aes(x='lag', y='r^2'), color="red", size=3) +  # Scatter plot for 'r^2'
-  labs(x="lag", y="Coefficient", title="") +
-  scale_color_discrete(guide=False) +
-  scale_y_continuous(labels=percent_format()) +
-  theme(legend_position="none")
-).draw()
-```
-
 We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns.
 
-\newpage
-
 ```{python}
 #| output: true
-heatmap = pd.concat([heatmap.iloc[(i-1)*len(heatmap)//3:i*len(heatmap)//3].reset_index(drop=True) for i in range(1,4)],axis=1)
-heatmap.columns = ['lag','r','r^2','lag ','r ','r^2 ','lag  ','r  ','r^2  ']
-heatmapTable = heatmap.style.background_gradient(cmap='RdYlBu',subset=['lag','r','r^2','lag ','r ','r^2 ','lag  ','r  ','r^2  '])
-heatmapTable.hide()
+#| label: fig-label2
+#| fig-cap: Coefficients obtained with tuned hyperparameter
+
+plot_r_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r')
+plot_rsq_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r_sq')
+(
+  ggplot(pd.concat([plot_r_df, plot_rsq_df]), 
+         aes(x="lag", y="value")) + 
+  geom_col()  +
+  facet_wrap("model") +
+  labs(x="Lag", y="Coefficient",) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none") + 
+  theme_minimal()  +
+  scale_fill_manual(["red", "blue"])  # Customize colors here
+  )
 ```
+
 
