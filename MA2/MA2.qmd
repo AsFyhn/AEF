@@ -289,9 +289,9 @@ model_fit = (sm.OLS.from_formula(
 prettify_result(model_fit)
 ```
 
-We cannot reject the null hypothesis that the returns, $\alpha$, of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from Jegadeesh and Titman (1993) which suggests that it is possible to obtain a positive $\alpha$ with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which is not usually observed.
+We cannot reject the null hypothesis that the returns, $\alpha$, of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from Jegadeesh and Titman (1993) which suggests that it is possible to obtain a positive $\alpha$ with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which are not usually observed.
 
-Our results show a significant negative $\beta$, which means the momentum (long/short) portfolio is negatively correlated with the market. This type of portfolio is rare and can be used to reduce the market risk of other investments with positive betas.
+Our results show a significant negative $\beta$, which means the momentum (long/short) portfolio is negatively correlated with the market. This type of portfolio can be used to reduce the market risk of other investments with positive betas.
 
 To further our understanding of the returns of the portfolio we plot the graph below:
 
@@ -322,7 +322,7 @@ plot_momentum_longshort_year = (
 plot_momentum_longshort_year.draw()
 ```
 
-The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio seems to deliver the highest returns even though the two other portfolios have positive alphas. 
+The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio delivers higher returns more consitently than both the low and high momentum portfolio which have positive alphas. 
 
 **Exercise 4** 
 In this exercise, we want to estimate a model where the excess return of a stock is linear dependent on its own 60 lags. The regression model looks as follows: 
