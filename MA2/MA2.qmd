@@ -46,7 +46,7 @@ from sklearn.model_selection import (
 
 #Connecting to the database
 tidy_finance = sqlite3.connect(
-    database=f"/Users/emilkolko/Downloads/tidy_finance_python.sqlite"
+    database=f"../Data/tidy_finance_python.sqlite"
 )
 
 #Reading in crsp_monthly and factors_ff3_monthly
