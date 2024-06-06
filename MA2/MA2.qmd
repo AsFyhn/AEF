@@ -350,10 +350,13 @@ plot_momentum_longshort_year.draw()
 
 The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which supports the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio delivers higher returns more consistently than both the low and high momentum portfolio which have positive alphas. 
 
+**Exercise 4**
 
 We aim to estimate a model where a stock's excess return is linearly dependent on its own 60 previous lags. The regression model is as follows:
 
 $$r_{i,t+1} = \sum_{k=1}^{60} b_k r_{i,t-k} + \sum_{k=1}^{60} c_k r_{i,t-k}^2$$
+
+The squared term represents the magnitude of past returns, irrespective of their direction (positive or negative).Therefore, the coefficient $c_k$ captures how much the volatility (or magnitude of returns) from k periods ago affects the current period's excess return.
 
 To estimate the coefficients of this model, we will use ridge regression, a regularized version of OLS regression. Ridge regression helps reduce the variance of the estimates by adding a penalty term to the OLS regression.This penalty term is the sum of the squared coefficients multiplied by a constant, $\lambda$, a hyperparameter that must be chosen. The optimal value of $\lambda$ is found through cross-validation. The regression coefficient has a closed-form solution:
 
@@ -479,7 +482,7 @@ plot_df = pd.concat([plot_df,plot_df.loc[plot_df['RMSE']<0.682].assign(Sample='Z
   facet_wrap("Sample",scales='free') +
   labs(x="$\lambda$", y="RMSE",) +
   scale_y_continuous() +
-  theme(legend_position="none") +
+  theme(legend_position="none",figure_size=(12,6)) +
   scale_x_log10() +
   annotate("point", x = opt_lambda, y = opt_rmse, colour = "blue") +
   theme_minimal()
@@ -511,14 +514,17 @@ plot_r_df = plot_r_df.assign(color=cut_func(plot_r_df['value']))
 
 plot_rsq_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[:len(coef)//2]}).assign(model='r_sq')
 plot_rsq_df = plot_rsq_df.assign(color=cut_func(plot_rsq_df['value']))
+coef_df = pd.concat([plot_r_df, plot_rsq_df])
+
 ```
 
 ```{python}
 #| output: true
 #| label: fig-coeffient_plot
 #| fig-cap: Coefficients obtained with tuned hyperparameter
+
 (
-  ggplot(pd.concat([plot_r_df, plot_rsq_df]), 
+  ggplot(coef_df, 
          aes(x="lag", y="value",fill='color')) + 
   geom_col()  +
   facet_wrap("model") +
@@ -527,7 +533,29 @@ plot_rsq_df = plot_rsq_df.assign(color=cut_func(plot_rsq_df['value']))
   theme(legend_position="none") + 
   theme_minimal() +
   scale_fill_manual(values=Blues.get_hex_swatch(3)+['#217dbf','#0a324f'])
+  )
 
+```
+
+```{python}
+#| output: true
+#| label: fig-coeffient_scatter
+#| fig-cap: Coefficients obtained with tuned hyperparameter
+
+coef_df1 = coef_df.pivot(index='lag',columns='model',values='value')
+beta = np.cov(coef_df1['r'].values, coef_df1['r_sq'].values) @ np.linalg.inv(np.var(coef_df1['r'].values))
+# coef_df1['trend'] = coef_df1['r']*beta
+# {i:1 for i in range(12,)}
+(
+  ggplot(coef_df1, 
+         aes(x="r", y="r_sq")) + 
+  geom_point()  +
+  # geom_line(aes(coef_df1,x='r',y='trend'))+
+  labs(x="r", y="r_sq",) +
+  scale_x_continuous(labels=percent_format()) +
+  scale_y_continuous(labels=percent_format()) +
+  theme(legend_position="none") + 
+  theme_minimal()
   )
 
 ```
