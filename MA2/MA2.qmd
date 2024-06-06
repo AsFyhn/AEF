@@ -22,7 +22,7 @@ jupyter: python3
 
 **Introduction**
 
-Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earn abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio by OLS. Next, we explore predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework using ridge regression. Instead of the positive correlation between last year’s and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earn abnormal profits.
+Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
 
 **Exercise 1 and 2:**
 
@@ -68,9 +68,9 @@ factors_ff3_monthly = pd.read_sql_query(
 )
 ```
 
-We load the "tidy_finance_python.sqlite" database and read in selected variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
+We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
 
-When computing the momentum we use the market capitalization as opposed to the stock price. The benefit of doing so, is that our computations are not affected by events that increase or decrease the number of outstanding stocks such as stock issuances or buybacks. If we had used the stock price in our computations as opposed to the market capitalization, such events would have artificially increased or decreased our calculated momentum.
+When computing the momentum, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. If we had used the stock price in our computations as opposed to the market capitalization, such events would have artificially affected our calculated momentum.
 
 
 
@@ -121,8 +121,6 @@ Where "ret_excess" is the monthly return above the risk free rate (1=1%), the "m
 
 **Exercise 3:**
 
-The equal-weighted average values of the 12-month momentum and market capitalization is shown in @tbl-averagemomentum below:
-
 ```{python}
 #| output: true
 #Bullet 1
@@ -145,38 +143,22 @@ average_return = (
     }))
     .reset_index()
 )
-```
-
-```{python}
-#| output: true
-#| label: tbl-averagemomentum
-#| tbl-cap: Average momentum and average market cap
-# Specifiying the headers for the table
-headers = {'Mom_12_decile':"Momentum decile",
-    'Average_Mom_12':"Average momentum",
-    'Average_mktcap':"Average market cap",
+# Specifiying the headers for the table, which we will use later to create table 2.
+headers = {'Mom_12_decile':"Decile",
+    'Average_Mom_12':"Average mom",
+    'Average_mktcap':"Average mktcap",
 }
 average_return.rename(columns=headers,inplace=True)
 
 for col in list(headers.values()):
   average_return[col] = average_return[col].astype(float)
-
-# Format the DataFrame style
-formatted_dfAgg = average_return.style.format({
-    'Momentum decile': '{:.0f}',  # No decimals
-    'Average momentum': '{:.2f}',  # Two decimal places
-    'Average market cap': '{:.2f}',  # Two decimal places
-    'na_rep': "" 
-})
-formatted_dfAgg.hide()
 ```
 
-Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in table 2. The excess returns are reported in the "factors_ff3_monthly" dataset and the CAPM alphas are estimated with OLS from the CAPM equation: 
+The equal-weighted average values of the 12-month momentum and market capitalization are shown in @tbl-alphasacross. Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the same table (@tbl-alphasacross). The excess returns are reported in the "factors_ff3_monthly" dataset (note that they are reported as 0.01=1%, whereas we showed ret_excess_p as 1=1% in @tbl-summary). The CAPM alphas are estimated with OLS from the CAPM equation: 
 
-$r_{i,t}-r_{f,t}=\alpha_i+\beta_i(r_{m,t}-r_{f,t})+\epsilon_{i,t}$ 
+$$r_{i,t}-r_{f,t}=\alpha_i+\beta_i(r_{m,t}-r_{f,t})+\epsilon_{i,t}$$
 
-
-The null-hypothosis is that alpha is zero and the alternative hypothosis is that alpha is different from zero:
+The null hypothesis is that alpha is zero and the alternative hypothesis is that alpha is different from zero:
 
 $H_0: \alpha_i=0$ 
 
@@ -228,8 +210,8 @@ Alphas_excessret = Vw_excess_returns.merge(
 )
 
 # Specifiying the headers for the table
-headers_v2 = {'Mom_12_decile':"Momentum decile",
-    'Decile_portfolio_excess_return':"Excess return",
+headers_v2 = {'Mom_12_decile':"Decile",
+    'Decile_portfolio_excess_return':"Excess ret",
 }
 # Renaming the headers
 Alphas_excessret.rename(columns=headers_v2,inplace=True)
@@ -237,16 +219,22 @@ Alphas_excessret.rename(columns=headers_v2,inplace=True)
 # Putting headers in place
 for col in list(headers_v2.values()):
   Alphas_excessret[col] = Alphas_excessret[col].astype(float)
+
+
+merged=pd.merge(average_return,Alphas_excessret,on='Decile',how='outer')#.set_index('Momentum decile')
 ```
 
 ```{python}
 #| output: true
 #| label: tbl-alphasacross
 #| tbl-cap: Alphas across the ten portfolios
-# Format the DataFrame style
-formatted_dfAgg_v2 = Alphas_excessret.style.format({
-    'Momentum decile': '{:.0f}',  # No decimals
-    'Excess return': '{:.4f}', # 4 decimal places
+
+# Specifying decimals before printing the table
+formatted_dfAgg_v2 = merged.style.format({
+    'Decile': '{:.0f}',
+    'Average mom': '{:,.2f}',
+    'Average mktcap' : '{:,.0f}',
+    'Excess ret': '{:.4f}',
     'Alpha': '{:.4f}',
     't-statistic': '{:.2f}',
     'p-value': '{:.2f}',
@@ -256,7 +244,7 @@ formatted_dfAgg_v2.hide()
 formatted_dfAgg_v2
 ```
 
-We see from the t-statistics and p-values, that we can reject the null-hypothosis in all cases except for the portfolio of 4th decile momentum stocks. As such, alpha is significantly different from zero in all other cases. To get a better sense of the distribution of alpha accross the ten portfolios, we present the data in @fig-capmalphas.
+We see from the t-statistics and p-values, that we can reject the null hypothesis in all cases except for the portfolio of 4th decile momentum stocks. As such, alpha is significantly different from zero in all other cases. To get a better sense of the distribution of alpha across the ten portfolios, we present the data in @fig-capmalphas.
 
 ```{python}
 #| output: true
@@ -266,9 +254,9 @@ We see from the t-statistics and p-values, that we can reject the null-hypothosi
 # Plotting the alphas on the momentum portfolios
 plot_momentum_portfolios_summary = (
   ggplot(Alphas_excessret, 
-         aes(x="Momentum decile", y="Alpha", fill="Momentum decile")) +
+         aes(x="Decile", y="Alpha", fill="Decile")) +
   geom_bar(stat="identity") +
-  labs(x="Momentum decile", y="CAPM alpha") +
+  labs(x="Decile", y="CAPM alpha") +
   scale_x_continuous(breaks=range(1, 11)) +
   scale_y_continuous(labels=percent_format()) +
   theme_minimal() +
@@ -278,9 +266,9 @@ plot_momentum_portfolios_summary = (
 plot_momentum_portfolios_summary.draw()
 ```
 
-We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with Jegadeesh and Titman (1993). The 2nd and 3rd decile stocks are more aligned with their paper showing negative alphas and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
+We see that the lowest decile stocks offer high alphas compared to the rest of the stocks. We expected the lowest performing stocks to have a negative alpha in accordance with Jegadeesh and Titman (1993). The 2nd and 3rd decile stocks are more aligned with their paper, showing negative alphas, and the stocks in the 5th decile and up offer positive alphas. These findings represent an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers.
 
-Specifically, we examine the alpha and beta of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which seems counter-intuitive. We analyze the alpha and beta of this portfolio with t-statistics. Here our hypothesizes are:
+Specifically, we examine the alpha and beta of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio. We note that this entails shorting stocks with high alpha to buy stocks with lower alpha, which seems counter-intuitive. We analyze the alpha and beta of this portfolio with t-statistics. Here our hypothesises are:
 
 $H_0: \alpha=0$ 
 
@@ -323,7 +311,7 @@ output = (pd.DataFrame(index=['alpha','beta'],
 output
 ```
 
-We cannot reject the null hypothesis that the returns, $\alpha$, of the momentum strategy is 0. This finding is in accordance with the CAPM model, that arbitrage strategies are not possible. However, our results deviate from Jegadeesh and Titman (1993) which suggests that it is possible to obtain a positive $\alpha$ with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which are not usually observed.
+We cannot reject the null hypothesis that the return, $\alpha$, of the momentum strategy is 0. This finding is in accordance with the CAPM model, which states that arbitrage strategies are not possible. However, our results deviate from Jegadeesh and Titman (1993) who suggest that it is possible to obtain a positive $\alpha$ with the momentum strategy. The deviation in our results can be explained by the high alphas of portfolio 1, which are not usually observed.
 
 Our results show a significant negative $\beta$, which means the momentum (long/short) portfolio is negatively correlated with the market. This type of portfolio can be used to reduce the market risk of other investments with positive betas.
 
@@ -360,9 +348,8 @@ plot_momentum_longshort_year = (
 plot_momentum_longshort_year.draw()
 ```
 
-The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which further the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio delivers higher returns more consitently than both the low and high momentum portfolio which have positive alphas. 
+The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which supports the argument for a momentum portfolio. Interestingly, the momentum long/short portfolio delivers higher returns more consistently than both the low and high momentum portfolio which have positive alphas. 
 
-**Exercise 4** 
 
 We aim to estimate a model where a stock's excess return is linearly dependent on its own 60 previous lags. The regression model is as follows:
 
@@ -544,5 +531,3 @@ plot_rsq_df = plot_rsq_df.assign(color=cut_func(plot_rsq_df['value']))
   )
 
 ```
-
-
