@@ -35,6 +35,7 @@ import tabulate
 
 from plotnine import *
 from mizani.formatters import percent_format
+from mizani.colors.brewer.sequential import Blues as Blues
 from regtabletotext import prettify_result
 
 from sklearn.compose import ColumnTransformer
@@ -376,6 +377,7 @@ Here $\hat{\beta}$ represents the estimated coefficients, $X$ is the matrix of p
 First, we clean the dataset by removing the smallest stocks, specifically those with the lowest 20% market capitalization.
 
 ```{python}
+# effectively not important copy. just to create better overview
 ml_crps = crsp_monthly.copy(deep=True)
 ```
 
@@ -389,10 +391,10 @@ ml_crps = ml_crps[ml_crps['mktcap'] >= ml_crps['month'].map(cut_off)]
 ```
 
 ```{python}
-# create a dataframe with lagged ex
-r_df = pd.concat([ml_crps.groupby('permno')['ret_excess'].shift(i) for i in range(2,62)],axis=1)
-r_df.columns = [col+f'_lag_{i+2}' for i, col in enumerate(r_df.columns.values)]
-r_sq_df = r_df**2
+# create a lagged excess return
+r_df = pd.concat([ml_crps.groupby('permno')['ret_excess'].shift(i) for i in range(2,62)],axis=1) # new dataframe with r lagged
+r_df.columns = [col+f'_lag_{i+2}' for i, col in enumerate(r_df.columns.values)]                  # rename columns
+r_sq_df = r_df**2   # i
 r_sq_df.columns = [col.replace('ret_excess', 'ret_excess_sq') for col in r_sq_df.columns.values]
 ml_crps_lags = pd.concat([ml_crps, r_df, r_sq_df], axis=1)
 
@@ -475,6 +477,7 @@ opt_lambda = best_est.get_params()['alpha']
 #| output: true
 #| label: fig-tuning
 #| fig-cap: Root mean squared error for different penalty
+
 plot_df = pd.DataFrame({'RMSE':-finder.cv_results_['mean_test_score'],'lambda':lambdas})
 
 opt_rmse = plot_df.loc[plot_df['lambda']==opt_lambda,'RMSE'].iloc[0]
@@ -507,24 +510,39 @@ coef = best_est_fit.coef_
 
 We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns.
 
+In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). It is noted that coefficient in front of squared terms seem to be greater in absolute value than those in front of $r_{i,t−k}$. 
+
+The coefficients for the squared terms are all positive and relatively large up to the twelfth lag, after which they turn negative and mostly remain negative for the entire lag structure. Additionally, we notice significant coefficients for lags $k\in(12,24,48)$. This suggests that the excess returns exhibit some periodicity, where the squared returns from the same month in previous years strongly influence the current excess return.
+
+The pattern for the coefficients of the non-squared lags of excess return is not as clear as for the squared terms. The coefficients are relatively small and, for lags up to a year, they are both positive and negative. There seems to be no evidence here for a momentum strategy. However, we do notice some clustering of high positive coefficients for lags of excess return between 1 to 2 years.
+
+Based on this ridge-regression analysis, no horizon seem to justify a momentum strategy. 
+```{python}
+cut_func = lambda d: pd.qcut(np.abs(d),q=5,labels=['very low','low','medium','high','very high'])
+plot_r_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r')
+plot_r_df = plot_r_df.assign(color=cut_func(plot_r_df['value']))
+
+plot_rsq_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[:len(coef)//2]}).assign(model='r_sq')
+plot_rsq_df = plot_rsq_df.assign(color=cut_func(plot_rsq_df['value']))
+```
+
 ```{python}
 #| output: true
-#| label: fig-label2
+#| label: fig-coeffient_plot
 #| fig-cap: Coefficients obtained with tuned hyperparameter
-
-plot_r_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r')
-plot_rsq_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r_sq')
 (
   ggplot(pd.concat([plot_r_df, plot_rsq_df]), 
-         aes(x="lag", y="value")) + 
+         aes(x="lag", y="value",fill='color')) + 
   geom_col()  +
   facet_wrap("model") +
   labs(x="Lag", y="Coefficient",) +
   scale_y_continuous(labels=percent_format()) +
   theme(legend_position="none") + 
-  theme_minimal()  +
-  scale_fill_manual(["red", "blue"])  # Customize colors here
+  theme_minimal() +
+  scale_fill_manual(values=Blues.get_hex_swatch(3)+['#217dbf','#0a324f'])
+
   )
+
 ```
 
 
