@@ -1,7 +1,7 @@
 ---
 title: Mandatory Assignment 2
-author: Asbjørn Fyhn & Emil Beckett Kolko
-date: 2024-04-019
+author: Exam number 73 & 85
+date: 2024-06-10
 execute:
   echo: false
   warning: false
