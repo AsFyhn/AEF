@@ -39,7 +39,7 @@ from scipy.optimize import minimize
 
 ```{python}
 #Load data
-df=pd.read_csv(r"../../data/data-exam-2024.csv") 
+df = pd.read_csv(r"../../data/data-exam-2024.csv") 
 # slice data set into training and test
 df_train = df.loc[df['month']<='2015-12-31']
 df_test = df.loc[df['month']>'2015-12-31']
@@ -82,6 +82,8 @@ var_res = residuals.groupby('permno').apply(np.var).values
 
 ```{python}
 #| output: true
+#| fig-label: fig-coefficientdistribution
+#| fig-cap: "Distribution of the estimated coefficients"
 
 ff_reg_coef = (ff_reg_coef_unstack.stack()
     .reset_index()
@@ -95,12 +97,12 @@ ff_reg_coef = (ff_reg_coef_unstack.stack()
     geom_histogram(binwidth=0.05, fill='skyblue') +
     facet_wrap('coeff',scales='free') + 
     labs(x='Coefficient',y=element_blank()) +
-    # theme_minimal() +
+    theme_minimal() +
     theme(
       legend_position=(0.15,0.9),
       legend_title=element_blank(),
       legend_direction='vertical',
-      figure_size=(6,4),
+      figure_size=(5,4),
       )
 ).draw()
 ```
@@ -200,26 +202,52 @@ Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\bar{\omega}_{i,t}+\frac{1}{N}\theta'x_{i,t
 ```{python}
 #| output: true
 
+def calculate_naive_portfolio(N):
+    """
+    This function calculates the portfolio weights of the naive portfolio
+        Args:
+            N: the number of assets
+        Returns:
+            the portfolio weights
+    """
+    return 1/N * np.ones(N)
+
 #Only data before 2015
-df_pp = df.loc[df['month']<='2015-12-31']
-# Defining the input variables
-gamma = 4
-N = df_pp['permno'].unique().size
-naive_portfolio = 1/N * np.ones((N,df_pp['month'].unique().size))
+df_pp = deepcopy(df_train)
+
 r_it =  df_pp.pivot(index='month',columns='permno',values='ret_excess')
 
 # Calculating the portfolio policy weights for at given theta
 def calc_pp_weight(theta): 
+    """
+    This function calculates the portfolio weights for the portfolio optimization problem
+        Args: 
+            theta: the vector of parameters
+        Returns:
+            the portfolio weights
+    """
     df_pp.loc[:,'x'] = (df_pp[['beta','size','bm']]*theta.T).sum(axis=1)
-    return df_pp.pivot(index='month',columns='permno',values='x')*1/N + 1/N
+    return (df_pp.pivot(index='month',columns='permno',values='x')*1/N + calculate_naive_portfolio(N))
 
 # Defining the objective function for the given certainty equivalent
 def objective_function_ex2(theta):
+    """
+    This function calculates the objective function for the portfolio optimization problem
+        Args:
+            theta: the vector of parameters
+        Returns:
+            the value of the objective function
+    """
+    # calculate the portfolio weights for the given theta
     w_it = calc_pp_weight(theta)
+    # calculate the return of the portfolio
     R_pt = (w_it*r_it).sum(axis=1) + 1
+    # calculate the expected return as the mean of the portfolios past returns
     E_R = R_pt.mean()
+    # calculate the variance of the portfolio returns
     Var_R = R_pt.var()
-    return -(E_R - (gamma/2)*Var_R)
+
+    return -(E_R - (gamma/2)*Var_R) # return the negative value of the objective function
 
 # Maximizing the objective function
 results = minimize(
@@ -242,9 +270,9 @@ theta_hat_df.round(3)
 
 
 ```{python}
-# Calculating portfolio weights in December 2015
+# calculate the portfolio weights based on the optimal theta
 w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
-w_pp 
+
 ```
 
 
@@ -350,12 +378,6 @@ def calculate_efficient_portfolio(Sigma, mu, gamma, return_multiple = 2):
     efp_weights = mvp_weights + lambda_tilde/2 * (Sigma_inv@mu - D* mvp_weights ) 
     return efp_weights
 
-def calculate_naive_portfolio(N):
-    """
-    This function calculates the portfolio weights of the naive portfolio
-    """
-    return 1/N * np.ones(N)
-
 # create the portfolios 
 naive_portfolio = calculate_naive_portfolio(mu_tilde.shape[0])
 eff_portfolio = calculate_efficient_portfolio(S_tilde, mu_tilde, gamma)
@@ -378,24 +400,23 @@ def performance_calculations(weights):
     ann_sharpe_ratio = annualize_return/annualized_std
     return {
         'Mean':annualize_return,
-        'Variance': annualized_std, 
+        'Std. Dev.': annualized_std, 
         'Sharpe Ratio' : ann_sharpe_ratio}
-
 
 # create a dataframe to store the performance calculations
 df_rep = pd.DataFrame({
     'Naive': performance_calculations(naive_portfolio),
     'Efficient': performance_calculations(eff_portfolio),
-    'Ex1': performance_calculations(ex1_portfolio),
-    'Ex2': performance_calculations(ex2_portfolio),
+    'FF': performance_calculations(ex1_portfolio),
+    'PP': performance_calculations(ex2_portfolio),
 }).T
 
 # create a dataframe to store the weights
 df_rep_weights = pd.DataFrame({
     'Naive': naive_portfolio,
     'Efficient': eff_portfolio,
-    'Ex1': ex1_portfolio,
-    'Ex2': ex2_portfolio,
+    'FF': ex1_portfolio,
+    'PP': ex2_portfolio,
 }
 ).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
 
@@ -403,27 +424,44 @@ df_rep_weights = pd.DataFrame({
 
 ```{python}
 # | output : true
-df_rep.style.format({
-    'Mean': '{:.2%}',
-    'Variance': '{:.2%}',
-    'Sharpe Ratio': '{:.2f}'
-})
+# | label : tbl-performancereport
+# | tbl-cap: "Annualized portfolio measures"
+
+df_rep['Mean'] = df_rep['Mean'].mul(100) # to get it as percent
+df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) # to get it as percent
+df_rep.round(2)
 ```
 
 ```{python}
+# | output : true
+# | label : fig-portfolioweights
+# | fig-cap: Portfolio Weights for different portfolios
 (
-    ggplot(df_rep_weights, aes(x='permno', y='Weight')) + 
-    geom_bar(stat='identity', fill='skyblue') + 
-    facet_wrap('Portfolio',scales='free') +
-    labs(x='Ticker', y='Weight') +
-    scale_y_continuous(labels=percent_format()) +
-                      #  )  +
-    # theme_minimal() + 
+    ggplot(
+        df_rep_weights, 
+        aes(x='permno', y='Weight')
+        ) + 
+    geom_bar(
+        stat='identity', 
+        fill='skyblue') + 
+    facet_wrap(
+        'Portfolio',
+        scales='free') +
+    labs(
+        x='Ticker', 
+        y='Weight') +
+    scale_y_continuous(
+        labels=percent_format()
+        ) +
+    theme_minimal(
+
+    ) + 
     theme(
           axis_text_x=element_blank(),
           axis_ticks_major_x=element_blank(),
-          # axis_text_x=element_text(angle=90, vjust=0.5, hjust=0.5),
-          figure_size=(6,4), )
-        )
+          figure_size=(6,4), 
+          )
+)
+
 ```
 
