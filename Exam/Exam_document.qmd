@@ -27,9 +27,9 @@ jupyter: python3
 
 **Bullet 1**
 
-The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns.
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til))
 
-Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by method of moments. They estimate $\theta$ such that the utility that would have been achieved, if the portfolio had been implemented over the sample period is maximized. The $\hat{\theta}$ that maximizes expected utility is given by the first order conditions:
+Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the problem The $\hat{\theta}$ that maximizes expected utility is given by the first order conditions: 
 
 $$\frac{1}{T} \sum_{t=0}^{T-1} h(r_{t+1}, x_t; \theta) = \frac{1}{T} \sum_{t=0}^{T-1} u'(r_{p,t+1})(x_t^Tr_{t+1}) = 0$$
 
@@ -42,3 +42,85 @@ Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{
 
 **Bullet 2**
 
+
+
+
+Directly parametrizing portfolio weights reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance or imprecise coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly. The computational requirements only grow with the number of characteristics and not with the number of stocks. 
+
+However, direct weight parametrization offer less intuitive interpretations. The weight on each characteristic is constant through stocks and time, which implies that e.g. the characteristic “book-to-market ratio” has the same effect on a car manufacturing company in 1980 as it has on a tech company in 2000. Intuitively, that does not make much sense. The two-step approach in Problem 1 offer more straightforward economic interpretations.
+
+**Bullet 3**
+To estimate $\theta$, we maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. The results are presented in @tbl-thetas.
+```{python}
+#| output: true
+import pandas as pd
+import numpy as np
+import sqlite3
+import statsmodels.api as sm
+import tabulate
+
+from plotnine import *
+from mizani.formatters import percent_format
+from mizani.colors.brewer.sequential import Blues as Blues
+from regtabletotext import prettify_result
+import os
+from scipy.optimize import minimize
+#Load data
+df=pd.read_csv(r"../../data/data-exam-2024.csv")
+#Only data before 2015
+df_pp = df.loc[df['month']<='2015-12-31']
+
+#
+# Defining the input variables
+gamma = 4
+N = df_pp['permno'].unique().size
+naive_portfolio = 1/N * np.ones((N,df_pp['month'].unique().size))
+r_it =  df_pp.pivot(index='month',columns='permno',values='ret_excess')
+
+# Calculating the portfolio policy weights for at given theta
+def calc_pp_weight(theta): 
+    df_pp.loc[:,'x'] = (df_pp[['beta','size','bm']]*theta.T).sum(axis=1)
+    return df_pp.pivot(index='month',columns='permno',values='x')*1/N + 1/N
+
+# Defining the objective function for the given certainty equivalent
+def objective_function_ex2(theta):
+    w_it = calc_pp_weight(theta)
+    R_pt = (w_it*r_it).sum(axis=1) + 1
+    E_R = R_pt.mean()
+    Var_R = R_pt.var()
+    return -(E_R - (gamma/2)*Var_R)
+
+# Maximizing the objective function
+results = minimize(
+    fun=objective_function_ex2,
+    x0=np.ones(3),
+    options={'maxiter':1e6}
+)
+theta_hat = results.x
+```
+```{python}
+#| output: asis
+#| label: tbl-thetas
+#| tbl-cap: ""
+# Creating a DataFrame to present theta_hat
+theta_hat_df = pd.DataFrame([theta_hat], columns=['Beta', 'Size', 'Bm'], index=['Theta'])
+
+theta_hat_df.round(3)
+
+```
+
+
+```{python}
+# Calculating portfolio weights in December 2015
+w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
+w_pp 
+```
+
+
+
+Our estimates show that the portfolio policy, relative to the naïve portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so a negative sign on the market capitalization characteristic makes sense. However, the effect might be biased in our analysis due the construction of the dataset. Our dataset consists solely of selected stocks with continuous trading history from 2000-2023. As such, none of the analyzed firms went bankrupt during the period, which creates an inherent bias towards small firms. 
+The negative sign of the beta characteristic coefficient aligns with the result in Frazzini & Pedersen (2014), that one should bet against beta. The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on the book-to-market characteristic coefficient is also aligned with the literature. Firms with a higher fundamental value are favored, which makes sense intuitively.
+
+**Bullet 4**
+
+We calculate the portfolio policy weights in December 2015 and save them for use in Problem 3.
