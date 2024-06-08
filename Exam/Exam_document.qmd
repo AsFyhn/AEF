@@ -167,8 +167,12 @@ if not np.allclose(opt_w,weights_analytical): print("Check your calculations aga
 
 The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til))
 
-Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the problem The $\hat{\theta}$ that maximizes expected utility is given by the first order conditions: 
+Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
 
+$$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
+
+Where they use CRRA utility throughout the paper.
+<!-- 
 $$\frac{1}{T} \sum_{t=0}^{T-1} h(r_{t+1}, x_t; \theta) = \frac{1}{T} \sum_{t=0}^{T-1} u'(r_{p,t+1})(x_t^Tr_{t+1}) = 0$$
 
 And is interpreted as a method of moments estimator. The asymptotic covariance matric is:
@@ -176,7 +180,7 @@ And is interpreted as a method of moments estimator. The asymptotic covariance m
 $$
 \Sigma_{\theta} \equiv \text{AsyVar}(\hat{\theta}) = \frac{1}{T} \left[ G^T V^{-1} G \right]^{-1},
 $$
-Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$.
+Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$. -->
 
 **Bullet 2**
 
@@ -188,7 +192,14 @@ Directly parametrizing portfolio weights reduces dimensionality exponentially co
 However, direct weight parametrization offer less intuitive interpretations. The weight on each characteristic is constant through stocks and time, which implies that e.g. the characteristic “book-to-market ratio” has the same effect on a car manufacturing company in 1980 as it has on a tech company in 2000. Intuitively, that does not make much sense. The two-step approach in Problem 1 offer more straightforward economic interpretations.
 
 **Bullet 3**
-To estimate $\theta$, we maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. The results are presented in @tbl-thetas.
+To estimate $\theta$, we use the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
+<!-- 
+We maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. -->
+$$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t})$$
+
+Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\bar{\omega}_{i,t}+\frac{1}{N}\theta'x_{i,t})$ and $\bar{\omega}_{i,t}$ is the naive portfolio.
+
+ The results are presented in @tbl-thetas.
 ```{python}
 #| output: true
 
@@ -241,7 +252,7 @@ w_pp
 
 
 
-Our estimates show that the portfolio policy, relative to the naïve portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so a negative sign on the market capitalization characteristic makes sense. However, the effect might be biased in our analysis due the construction of the dataset. Our dataset consists solely of selected stocks with continuous trading history from 2000-2023. As such, none of the analyzed firms went bankrupt during the period, which creates an inherent bias towards small firms. 
+Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so a negative sign on the market capitalization coefficient makes sense. However, the effect might be biased in our analysis due the construction of the dataset that consists solely of selected stocks with continuous trading history from 2000-2023. As such, none of the analyzed firms went bankrupt during the period, which creates an inherent bias towards small firms. 
 The negative sign of the beta characteristic coefficient aligns with the result in Frazzini & Pedersen (2014), that one should bet against beta. The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on the book-to-market characteristic coefficient is also aligned with the literature. Firms with a higher fundamental value are favored, which makes sense intuitively.
 
 **Bullet 4**
