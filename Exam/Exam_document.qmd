@@ -1,0 +1,23 @@
+---
+title: Mandatory Assignment 2
+author: Asbjørn Fyhn & Emil Beckett Kolko
+date: 2024-04-019
+execute:
+  echo: false
+  warning: false
+  output: false
+format:
+  pdf:
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - top=20mm
+      - left=20mm
+      - bottom=20mm
+      - right=20mm
+    cite-method: natbib
+    fontsize: 12pt
+jupyter: python3
+---
+
+**Exercise 1**
