@@ -165,7 +165,9 @@ if not np.allclose(opt_w,weights_analytical): print("Check your calculations aga
 
 **Bullet 1**
 
-The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til))
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. 
+<!-- 
+(Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til)) -->
 
 Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
 

@@ -93,6 +93,8 @@ data_for_sorts['Mom_12'] = 100 * (data_for_sorts['mktcap_lag'] - data_for_sorts[
 
 We present summary statistics of our dataset in @tbl-summary.
 
+
+
 ```{python}
 #| output: true
 #| label: tbl-summary
@@ -100,11 +102,10 @@ We present summary statistics of our dataset in @tbl-summary.
 
 # Summarizing the data for sorts with mean, std, min, 5%, 50% 95% and max
 # List of variables to exclude
-exclude_vars = ['month', 'permno', 'ret_excess']
+exclude_vars = ['month', 'permno']
 
 # Filter out the excluded variables and displaying excess return in percentage terms
 data_for_sorts_filtered = data_for_sorts.drop(columns=exclude_vars)
-data_for_sorts_filtered['ret_excess_p'] = 100*data_for_sorts['ret_excess']
 
 # Generate the summary statistics
 data_for_sorts_summary = (
@@ -116,7 +117,7 @@ data_for_sorts_summary = (
 
 data_for_sorts_summary
 ```
-Where "ret_excess" is the monthly return above the risk free rate (1=1%), the "mktcap" variables are in USD millions, and "Mom_12" is the 12-month momentum in percentage terms (1=1%).
+Where "ret_excess_p" is the monthly return above the risk free rate (0.01=1%), the "mktcap" variables are in USD millions, and "Mom_12" is the 12-month momentum in percentage terms (1=1%).
 
 **Exercise 3:**
 
@@ -153,8 +154,7 @@ for col in list(headers.values()):
   average_return[col] = average_return[col].astype(float)
 ```
 
-The equal-weighted average values of the 12-month momentum and market capitalization are shown in @tbl-alphasacross. Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the same table (@tbl-alphasacross). The excess returns are reported in the "factors_ff3_monthly" dataset (note that they are reported as 0.01=1%, whereas we showed ret_excess_p as 1=1% in @tbl-summary). The CAPM alphas are estimated with OLS from the CAPM equation: 
-
+The equal-weighted average values of the 12-month momentum and market capitalization are shown in @tbl-alphasacross. Furthermore, we present the average excess return and the CAPM alpha for the ten momentum-sorted portfolios in the same table (@tbl-alphasacross). The excess returns are reported in the "factors_ff3_monthly" dataset. The CAPM alphas are estimated with OLS from the CAPM equation: 
 $$r_{i,t}-r_{f,t}=\alpha_i+\beta_i(r_{m,t}-r_{f,t})+\epsilon_{i,t}$$
 
 The null hypothesis is that alpha is zero and the alternative hypothesis is that alpha is different from zero:
@@ -519,7 +519,7 @@ coef_df = pd.concat([plot_r_df, plot_rsq_df])
 
 ```
 
-```{python}
+<!-- ```{python}
 #| output: true
 #| label: fig-coeffient_plot
 #| fig-cap: Coefficients obtained with tuned hyperparameter
@@ -536,9 +536,9 @@ coef_df = pd.concat([plot_r_df, plot_rsq_df])
   scale_fill_manual(values=Blues.get_hex_swatch(3)+['#217dbf','#0a324f'])
   )
 
-```
+``` -->
 
-```{python}
+<!-- ```{python}
 #| output: true
 #| label: fig-coeffient_scatter
 #| fig-cap: Coefficients obtained with tuned hyperparameter
@@ -559,4 +559,4 @@ beta = np.cov(coef_df1['r'].values, coef_df1['r_sq'].values) @ np.linalg.inv(np.
   theme_minimal()
   )
 
-```
+``` -->
