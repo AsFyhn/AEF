@@ -46,7 +46,7 @@ df_test = df.loc[df['month']>'2015-12-31']
 # Number of stocks and months in the training dataset
 N = df_train['permno'].nunique()
 T = df_train['month'].nunique()
-
+gamma = 4
 ```
 
 **Exercise 1**
