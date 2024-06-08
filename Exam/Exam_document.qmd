@@ -21,3 +21,24 @@ jupyter: python3
 ---
 
 **Exercise 1**
+
+
+**Exercise 2**
+
+**Bullet 1**
+
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns.
+
+Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by method of moments. They estimate $\theta$ such that the utility that would have been achieved, if the portfolio had been implemented over the sample period is maximized. The $\hat{\theta}$ that maximizes expected utility is given by the first order conditions:
+
+$$\frac{1}{T} \sum_{t=0}^{T-1} h(r_{t+1}, x_t; \theta) = \frac{1}{T} \sum_{t=0}^{T-1} u'(r_{p,t+1})(x_t^Tr_{t+1}) = 0$$
+
+And is interpreted as a method of moments estimator. The asymptotic covariance matric is:
+
+$$
+\Sigma_{\theta} \equiv \text{AsyVar}(\hat{\theta}) = \frac{1}{T} \left[ G^T V^{-1} G \right]^{-1},
+$$
+Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$.
+
+**Bullet 2**
+
