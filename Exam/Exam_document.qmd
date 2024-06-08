@@ -19,8 +19,145 @@ format:
     fontsize: 12pt
 jupyter: python3
 ---
+```{python}
+import pandas as pd
+import numpy as np
+import sqlite3
+import statsmodels.api as sm
+import tabulate
+
+from copy import deepcopy
+from plotnine import *
+from mizani.formatters import percent_format
+from mizani.colors.brewer.sequential import Blues as Blues
+from regtabletotext import prettify_result
+import os
+from scipy.optimize import minimize
+```
+
+
+```{python}
+#Load data
+df=pd.read_csv(r"../../data/data-exam-2024.csv") 
+# slice data set into training and test
+df_train = df.loc[df['month']<='2015-12-31']
+df_test = df.loc[df['month']>'2015-12-31']
+
+# Number of stocks and months in the training dataset
+N = df_train['permno'].nunique()
+T = df_train['month'].nunique()
+
+```
 
 **Exercise 1**
+```{python}
+def ff_regression(data: pd.DataFrame,residuals:bool=True):
+    """This function runs the regression of the ff model. 
+        Args: 
+          data (pd.DataFrame): data used for the regression
+          residuals (bool): determines whether to return residuals or parameters"""
+    y_value = data['ret_excess']
+    x_values = data[['mkt_excess','smb','hml']]
+    res = sm.OLS(y_value, sm.add_constant(x_values)).fit(cov_type='HC1')
+
+    if residuals:
+        return_values = res.resid
+    else: 
+        return_values = res.params
+    return return_values
+
+# run the regression for each permno
+ff_reg_coef_unstack = df_ff.groupby('permno').apply(ff_regression,residuals=False)
+ff_reg_coef_unstack = ff_reg_coef_unstack.rename(columns={'const':'alpha','mkt_excess':'beta_rm','smb':'beta_smb','hml':'beta_hml'})
+betas = ff_reg_coef_unstack.iloc[:,1:].values
+alpha = ff_reg_coef_unstack.iloc[:,0].values.reshape(-1)
+
+# obtain the residuals 
+residuals = df_ff.groupby('permno').apply(ff_regression,residuals=True)
+var_res = residuals.groupby('permno').apply(np.var).values
+
+```
+
+```{python}
+#| output: true
+
+ff_reg_coef = (ff_reg_coef_unstack.stack()
+    .reset_index()
+    .rename(columns={'level_1':'coeff',0:'value'})
+    )
+(
+    ggplot(
+        ff_reg_coef.query('coeff != "residuals"') # we don't want to plot the residuals
+        ) + 
+    aes(x = 'value') +
+    geom_histogram(binwidth=0.05, fill='skyblue') +
+    facet_wrap('coeff',scales='free') + 
+    labs(x='Coefficient',y=element_blank()) +
+    # theme_minimal() +
+    theme(
+      legend_position=(0.15,0.9),
+      legend_title=element_blank(),
+      legend_direction='vertical',
+      figure_size=(6,4),
+      )
+).draw()
+```
+
+Interpretation: the mean of alpha is close to 0, while the mean of all the other values are well above zero. This means that an increase to either of the $x$ variable increases so does the stock's excess return.
+
+```{python}
+# merge the estimated coeffcients to the original dataframe
+df_ff_model = df_ff.merge(ff_reg_coef_unstack,on='permno',how='left')
+# model the excess return for each stock
+df_ff_model['ret_excess_model'] = (df_ff_model['alpha'] + 
+                                   df_ff_model['beta_rm']*df_ff_model['mkt_excess'] + 
+                                   df_ff_model['beta_smb']*df_ff_model['smb'] + 
+                                   df_ff_model['beta_hml']*df_ff_model['hml'])
+# pivot the dataframe to have the excess return for each stock in columns
+df_ff_model_pivot = df_ff_model.pivot(index='month',columns='permno',values='ret_excess_model')  
+
+# mean of all factor returns for each firm 
+factor_returns = df_ff.groupby('permno')[['mkt_excess','smb','hml']].mean()
+
+# calculate the mean and covariance matrix
+mu_ff = (alpha + np.sum(betas*factor_returns,axis=1)+ 1).values 
+S_ff = (betas@df_ff[['mkt_excess','smb','hml']].cov()@betas.T) + np.diag(var_res)
+```
+
+The correlation between the excess returns of two stocks depends on their factor loadings and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated.
+
+$$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
+has the analytical solution
+$$\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$$
+
+```{python}
+# find the inverse of the estimated variance-covariance matrix
+S_ff_inv = np.linalg.inv(S_ff)
+# define iota: vector of ones
+iota = np.ones(N)
+
+# Calculate the numerator part
+B = iota @ S_ff_inv
+C = B @ iota
+numerator = S_ff_inv @ mu_ff - ((B @ mu_ff - gamma) / C) * (S_ff_inv @ iota)
+
+# Calculate the optimal weights
+weights_analytical = numerator / gamma
+```
+
+
+```{python}
+# do a check of analytical result with a numerical optimizer
+obj_fun = lambda w: - ((w @ mu_ff) - (gamma / 2) * w.T @ S_ff @ w )
+opt_w = minimize(
+    fun=obj_fun,
+    x0=weights_analytical,
+    constraints=({'type': 'eq', 'fun': lambda w: np.sum(w) - 1}),
+    # bounds=[(0, 1) for i in range(N)]
+    options={'maxiter':1e6}
+).x
+if not np.allclose(opt_w,weights_analytical): print("Check your calculations again")
+```
 
 
 **Exercise 2**
@@ -64,24 +201,9 @@ Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\bar{\omega}_{i,t}+\frac{1}{N}\theta'x_{i,t
  The results are presented in @tbl-thetas.
 ```{python}
 #| output: true
-import pandas as pd
-import numpy as np
-import sqlite3
-import statsmodels.api as sm
-import tabulate
 
-from plotnine import *
-from mizani.formatters import percent_format
-from mizani.colors.brewer.sequential import Blues as Blues
-from regtabletotext import prettify_result
-import os
-from scipy.optimize import minimize
-#Load data
-df=pd.read_csv(r"../../data/data-exam-2024.csv")
 #Only data before 2015
 df_pp = df.loc[df['month']<='2015-12-31']
-
-#
 # Defining the input variables
 gamma = 4
 N = df_pp['permno'].unique().size
@@ -135,3 +257,180 @@ The negative sign of the beta characteristic coefficient aligns with the result 
 **Bullet 4**
 
 We calculate the portfolio policy weights in December 2015 and save them for use in Problem 3.
+
+
+
+# Exercise 3
+
+```{python}
+# Estimate the covariance matrix
+def cov1Para(Y,k = None):
+    """
+    This function estimates the covariance matrix for the stocks in the crsp_monthly dataset
+    """
+    #Pre-Conditions: Y is a valid pd.dataframe and optional arg- k which can be
+    #    None, np.nan or int
+    #Post-Condition: Sigmahat dataframe is returned
+
+    # de-mean returns if required
+    N,p = Y.shape                      # sample size and matrix dimension
+   
+    #default setting
+    if k is None:
+        mean = Y.mean(axis=0)
+        Y = Y.sub(mean, axis=1)                               #demean
+        k = 1
+    #vars
+    n = N-k                                    # adjust effective sample size
+    
+    
+    #Cov df: sample covariance matrix
+    sample = pd.DataFrame(np.matmul(Y.T.to_numpy(),Y.to_numpy()))/n     
+    
+    # compute shrinkage target
+    diag = np.diag(sample.to_numpy())
+    meanvar= sum(diag)/len(diag)
+    target=meanvar*np.eye(p)
+    
+    # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+    Y2 = pd.DataFrame(np.multiply(Y.to_numpy(),Y.to_numpy()))
+    sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     # sample covariance matrix of squared returns
+    piMat=pd.DataFrame(sample2.to_numpy()-np.multiply(sample.to_numpy(),sample.to_numpy()))
+    
+
+    pihat = sum(piMat.sum())
+    
+    # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+    gammahat = np.linalg.norm(sample.to_numpy()-target,ord = 'fro')**2
+    
+    # compute shrinkage intensity
+    kappahat=pihat/gammahat
+    shrinkage=max(0,min(1,kappahat/n))
+    
+    # compute shrinkage estimator
+    sigmahat=shrinkage*target+(1-shrinkage)*sample
+    
+    return sigmahat
+```
+
+```{python}
+df_pf_train = df.loc[df['month']<='2015-12-31']
+df_pf_test = df.loc[df['month']>'2015-12-31']
+out_of_sample_r = df_pf_test.pivot(index='month',columns='permno',values='ret_excess').values
+out_of_sample_sigma = np.cov(out_of_sample_r, rowvar=False)
+```
+
+```{python}
+df_pf_train_pivot = df_pf_train.pivot(index='month',columns='permno',values='ret_excess')
+mu_tilde = df_pf_train_pivot.mean(axis=0).values
+S_tilde = cov1Para(df_pf_train_pivot).values
+del df_pf_train_pivot
+```
+
+```{python}
+def calculate_min_variance_portfolio(Sigma):
+    """
+    This function calculates the minimum variance portfolio
+    """
+    Sigma_inv = np.linalg.inv(Sigma)
+    w_mvp = Sigma_inv @ iota    
+    w_mvp = w_mvp/np.sum(w_mvp) # normalize weights
+    return w_mvp
+
+def calculate_efficient_portfolio(Sigma, mu, gamma, return_multiple = 2):
+    """
+    This function calculates the efficient portfolio that 
+    """
+    Sigma_inv = np.linalg.inv(Sigma)
+    #----- minimum variance portfolio    
+    mvp_weights = calculate_min_variance_portfolio(Sigma)
+
+    #----- efficient frontier portfolio
+    mu_bar = return_multiple * mvp_weights.T @ mu
+    C = iota.T @ Sigma_inv @ iota
+    D = iota.T @ Sigma_inv @ mu
+    E = mu.T @ Sigma_inv @ mu
+    lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
+    efp_weights = mvp_weights + lambda_tilde/2 * (Sigma_inv@mu - D* mvp_weights ) 
+    return efp_weights
+
+def calculate_naive_portfolio(N):
+    """
+    This function calculates the portfolio weights of the naive portfolio
+    """
+    return 1/N * np.ones(N)
+
+# create the portfolios 
+naive_portfolio = calculate_naive_portfolio(mu_tilde.shape[0])
+eff_portfolio = calculate_efficient_portfolio(S_tilde, mu_tilde, gamma)
+ex1_portfolio = weights
+ex2_portfolio = w_pp
+```
+
+```{python}
+# create function that calculate the return and the variance
+mean_return = lambda weights: (out_of_sample_r @ weights).mean()
+variance_of_portfolio = lambda weights: (weights @ out_of_sample_sigma @ weights)
+
+# calculate the mean for all the portfolio
+mmr_ni =  mean_return(naive_portfolio)
+mmr_eff = mean_return(eff_portfolio)
+mmr_opt = mean_return(ex1_portfolio)
+mmr_pp =  mean_return(ex2_portfolio)
+
+# calculate the variance for all the portfolio
+var_ni =  variance_of_portfolio(naive_portfolio)
+var_eff = variance_of_portfolio(eff_portfolio)
+var_opt = variance_of_portfolio(opt_w)
+var_pp =  variance_of_portfolio(w_pp)
+```
+
+```{python}
+def sharpe_ratio(ret,var,fac=12):
+    """
+    """
+    mmr = ret * fac
+    std = np.sqrt(var) * np.sqrt(fac)
+    return mmr/std
+
+df_rep = pd.DataFrame({
+    'Naive': [mmr_ni,var_ni,sharpe_ratio(mmr_ni,var_ni)],
+    'Efficient': [mmr_eff,var_eff,sharpe_ratio(mmr_eff,var_eff)],
+    'Ex1': [mmr_opt,var_opt,sharpe_ratio(mmr_opt,var_opt)],
+    'Ex2': [mmr_pp,var_pp,sharpe_ratio(mmr_pp,var_pp)]
+},index=['Mean','Variance','Sharpe Ratio']).T
+
+df_rep.style.format({
+    'Mean': '{:.2%}',
+    'Variance': '{:.2%}',
+    'Sharpe Ratio': '{:.2f}'
+})
+```
+
+```{python}
+df_rep_weights = pd.DataFrame({
+    'Naive': naive_portfolio,
+    'Efficient': eff_portfolio,
+    'Ex1': ex1_portfolio,
+    'Ex2': ex2_portfolio,
+}#,index=df_pf_test['permno'].unique()
+).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
+```
+
+```{python}
+(
+    ggplot(df_rep_weights, aes(x='permno', y='Weight')) + 
+    geom_bar(stat='identity', fill='skyblue') + 
+    facet_wrap('Portfolio',scales='free') +
+    labs(x='Ticker', y='Weight') +
+    scale_y_continuous(labels=percent_format()) +
+                      #  )  +
+    # theme_minimal() + 
+    theme(
+          axis_text_x=element_blank(),
+          axis_ticks_major_x=element_blank(),
+          # axis_text_x=element_text(angle=90, vjust=0.5, hjust=0.5),
+          figure_size=(6,4), )
+        )
+```
+
