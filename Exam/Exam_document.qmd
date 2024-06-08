@@ -182,10 +182,6 @@ $$
 Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$. -->
 
 **Bullet 2**
-
-
-
-
 Directly parametrizing portfolio weights reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance or imprecise coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly. The computational requirements only grow with the number of characteristics and not with the number of stocks. 
 
 However, direct weight parametrization offer less intuitive interpretations. The weight on each characteristic is constant through stocks and time, which implies that e.g. the characteristic “book-to-market ratio” has the same effect on a car manufacturing company in 1980 as it has on a tech company in 2000. Intuitively, that does not make much sense. The two-step approach in Problem 1 offer more straightforward economic interpretations.
@@ -257,8 +253,6 @@ The negative sign of the beta characteristic coefficient aligns with the result 
 **Bullet 4**
 
 We calculate the portfolio policy weights in December 2015 and save them for use in Problem 3.
-
-
 
 # Exercise 3
 
