@@ -33,6 +33,7 @@ from mizani.colors.brewer.sequential import Blues as Blues
 from regtabletotext import prettify_result
 import os
 from scipy.optimize import minimize
+
 ```
 
 
@@ -46,7 +47,7 @@ df_test = df.loc[df['month']>'2015-12-31']
 # Number of stocks and months in the training dataset
 N = df_train['permno'].nunique()
 T = df_train['month'].nunique()
-
+gamma = 4
 ```
 
 **Exercise 1**
@@ -363,30 +364,41 @@ ex2_portfolio = w_pp
 ```
 
 ```{python}
-# create function that calculate the return and the variance
-mean_return = lambda weights: (out_of_sample_r @ weights).mean()
-variance_of_portfolio = lambda weights: (weights @ out_of_sample_sigma @ weights)
-ann_sharpe_ratio = lambda ret, var: (ret*12)/(np.sqrt(var)*np.sqrt(12))
+def performance_calculations(weights):
+    """
+    This function calculates the performance of the portfolio
+        Args: 
+            weights: the weights of the portfolio
+        Returns:
+            A dictionary with the mean, standard deviation and sharpe ratio of the portfolio
+    """
+    annualize_factor = 12
+    annualize_return =  (out_of_sample_r @ weights).mean()*annualize_factor
+    annualized_std = np.sqrt(weights @ out_of_sample_sigma @ weights) * np.sqrt(annualize_factor)
+    ann_sharpe_ratio = annualize_return/annualized_std
+    return {
+        'Mean':annualize_return,
+        'Variance': annualized_std, 
+        'Sharpe Ratio' : ann_sharpe_ratio}
 
 
-# calculate the mean for all the portfolio
-mmr_ni =  mean_return(naive_portfolio)
-mmr_eff = mean_return(eff_portfolio)
-mmr_opt = mean_return(ex1_portfolio)
-mmr_pp =  mean_return(ex2_portfolio)
-
-# calculate the variance for all the portfolio
-var_ni =  variance_of_portfolio(naive_portfolio)
-var_eff = variance_of_portfolio(eff_portfolio)
-var_opt = variance_of_portfolio(opt_w)
-var_pp =  variance_of_portfolio(w_pp)
-
+# create a dataframe to store the performance calculations
 df_rep = pd.DataFrame({
-    'Naive': [mmr_ni,var_ni,ann_sharpe_ratio(mmr_ni,var_ni)],
-    'Efficient': [mmr_eff,var_eff,ann_sharpe_ratio(mmr_eff,var_eff)],
-    'Ex1': [mmr_opt,var_opt,ann_sharpe_ratio(mmr_opt,var_opt)],
-    'Ex2': [mmr_pp,var_pp,ann_sharpe_ratio(mmr_pp,var_pp)]
-},index=['Mean','Variance','Sharpe Ratio']).T
+    'Naive': performance_calculations(naive_portfolio),
+    'Efficient': performance_calculations(eff_portfolio),
+    'Ex1': performance_calculations(ex1_portfolio),
+    'Ex2': performance_calculations(ex2_portfolio),
+}).T
+
+# create a dataframe to store the weights
+df_rep_weights = pd.DataFrame({
+    'Naive': naive_portfolio,
+    'Efficient': eff_portfolio,
+    'Ex1': ex1_portfolio,
+    'Ex2': ex2_portfolio,
+}
+).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
+
 ```
 
 ```{python}
@@ -396,16 +408,6 @@ df_rep.style.format({
     'Variance': '{:.2%}',
     'Sharpe Ratio': '{:.2f}'
 })
-```
-
-```{python}
-df_rep_weights = pd.DataFrame({
-    'Naive': naive_portfolio,
-    'Efficient': eff_portfolio,
-    'Ex1': ex1_portfolio,
-    'Ex2': ex2_portfolio,
-}
-).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
 ```
 
 ```{python}
