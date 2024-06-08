@@ -51,6 +51,7 @@ T = df_train['month'].nunique()
 
 **Exercise 1**
 ```{python}
+df_ff = deepcopy(df_train)
 def ff_regression(data: pd.DataFrame,residuals:bool=True):
     """This function runs the regression of the ff model. 
         Args: 
@@ -365,6 +366,8 @@ ex2_portfolio = w_pp
 # create function that calculate the return and the variance
 mean_return = lambda weights: (out_of_sample_r @ weights).mean()
 variance_of_portfolio = lambda weights: (weights @ out_of_sample_sigma @ weights)
+ann_sharpe_ratio = lambda ret, var: (ret*12)/(np.sqrt(var)*np.sqrt(12))
+
 
 # calculate the mean for all the portfolio
 mmr_ni =  mean_return(naive_portfolio)
@@ -377,23 +380,17 @@ var_ni =  variance_of_portfolio(naive_portfolio)
 var_eff = variance_of_portfolio(eff_portfolio)
 var_opt = variance_of_portfolio(opt_w)
 var_pp =  variance_of_portfolio(w_pp)
+
+df_rep = pd.DataFrame({
+    'Naive': [mmr_ni,var_ni,ann_sharpe_ratio(mmr_ni,var_ni)],
+    'Efficient': [mmr_eff,var_eff,ann_sharpe_ratio(mmr_eff,var_eff)],
+    'Ex1': [mmr_opt,var_opt,ann_sharpe_ratio(mmr_opt,var_opt)],
+    'Ex2': [mmr_pp,var_pp,ann_sharpe_ratio(mmr_pp,var_pp)]
+},index=['Mean','Variance','Sharpe Ratio']).T
 ```
 
 ```{python}
-def sharpe_ratio(ret,var,fac=12):
-    """
-    """
-    mmr = ret * fac
-    std = np.sqrt(var) * np.sqrt(fac)
-    return mmr/std
-
-df_rep = pd.DataFrame({
-    'Naive': [mmr_ni,var_ni,sharpe_ratio(mmr_ni,var_ni)],
-    'Efficient': [mmr_eff,var_eff,sharpe_ratio(mmr_eff,var_eff)],
-    'Ex1': [mmr_opt,var_opt,sharpe_ratio(mmr_opt,var_opt)],
-    'Ex2': [mmr_pp,var_pp,sharpe_ratio(mmr_pp,var_pp)]
-},index=['Mean','Variance','Sharpe Ratio']).T
-
+# | output : true
 df_rep.style.format({
     'Mean': '{:.2%}',
     'Variance': '{:.2%}',
@@ -407,7 +404,7 @@ df_rep_weights = pd.DataFrame({
     'Efficient': eff_portfolio,
     'Ex1': ex1_portfolio,
     'Ex2': ex2_portfolio,
-}#,index=df_pf_test['permno'].unique()
+}
 ).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
 ```
 
