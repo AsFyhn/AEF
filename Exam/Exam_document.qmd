@@ -358,7 +358,7 @@ def calculate_naive_portfolio(N):
 # create the portfolios 
 naive_portfolio = calculate_naive_portfolio(mu_tilde.shape[0])
 eff_portfolio = calculate_efficient_portfolio(S_tilde, mu_tilde, gamma)
-ex1_portfolio = weights
+ex1_portfolio = weights_analytical
 ex2_portfolio = w_pp
 ```
 
