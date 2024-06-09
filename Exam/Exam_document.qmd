@@ -163,7 +163,7 @@ $$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\
 which has the analytical solution
 $$\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$$
 
-We create a portfolio with the optimal weights using all avaliable data in the training dataset. The out-of-sample performance will be reported in Exercise 3. 
+We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance will be reported in Exercise 3. 
 
 ```{python}
 # find the inverse of the estimated variance-covariance matrix
@@ -194,17 +194,11 @@ if not np.allclose(opt_w,weights_analytical): print("Check your calculations aga
 
 # Exercise 2
 
-**Bullet 1**
-
 The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. 
 <!-- 
 (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til)) -->
 
 Brandt, Santa-Clara, and Valkanov, 2009, estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
-
-$$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
-
-Where they use CRRA utility throughout the paper.
 <!-- 
 $$\frac{1}{T} \sum_{t=0}^{T-1} h(r_{t+1}, x_t; \theta) = \frac{1}{T} \sum_{t=0}^{T-1} u'(r_{p,t+1})(x_t^Tr_{t+1}) = 0$$
 
@@ -214,19 +208,20 @@ $$
 \Sigma_{\theta} \equiv \text{AsyVar}(\hat{\theta}) = \frac{1}{T} \left[ G^T V^{-1} G \right]^{-1},
 $$
 Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$. -->
+$$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
 
-**Bullet 2**
-Directly parametrizing portfolio weights reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance or imprecise coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly. The computational requirements only grow with the number of characteristics and not with the number of stocks. 
+Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance or imprecise coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly. The computational requirements only grow with the number of characteristics and not with the number of stocks. 
 
 However, direct weight parametrization offer less intuitive interpretations. The weight on each characteristic is constant through stocks and time, which implies that e.g. the characteristic “book-to-market ratio” has the same effect on a car manufacturing company in 1980 as it has on a tech company in 2000. Intuitively, that does not make much sense. The two-step approach in Problem 1 offer more straightforward economic interpretations.
 
-**Bullet 3**
-To estimate $\theta$, we use the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
+To investigate the parametric portfolio policies further, we estimate $\theta$ on the dataset provided for the exam using the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
 <!-- 
 We maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. -->
-$$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t})$$
+$$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t}),$$
+where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. 
 
-Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. The results are presented in @tbl-thetas.
+
+The results are presented in @tbl-thetas.
 ```{python}
 #| output: true
 
@@ -308,15 +303,12 @@ w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
 Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so a negative sign on the market capitalization coefficient makes sense. However, the effect might be biased in our analysis due the construction of the dataset that consists solely of selected stocks with continuous trading history from 2000-2023. As such, none of the analyzed firms went bankrupt during the period, which creates an inherent bias towards small firms. 
 The negative sign of the beta characteristic coefficient aligns with the result in Frazzini & Pedersen (2014), that one should bet against beta. The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on the book-to-market characteristic coefficient is also aligned with the literature. Firms with a higher fundamental value are favored, which makes sense intuitively.
 
-**Bullet 4**
-
-We calculate the portfolio policy weights in December 2015 $(t_{end})$ by inserting $\hat{\theta}$ in the equation:
-$$\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$$
-
-The optimal portfolio weights $w^{PP}$ are presented in @fig-portfolioweights.
+In exercise 3, we evaluate the performance of the paramatric portfolio. To do this, we need to calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation:
+$$\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}},$$
+where $\hat{\theta}$ is the estimated values presented in @tbl-thetas. The optimal portfolio weights, $w^{PP}_{i,t_{end}}$, are presented in @fig-portfolioweights.
 
 # Exercise 3
-To evaluate the performance of the four portfolios, we compute portfolio returns in the out-of-sample period from January 2016 until December 2020, based on the December 2015 portfolio weights. The returns, risk, and Sharpe Ratios are reported in @tbl-performancereport.
+To evaluate the performance of the four portfolios, we compute portfolio returns in the out-of-sample period from January 2016 until December 2020, based on the December 2015 portfolio weights. As such, we keep the portfolio weights constant throughout the out-of-sample period and do not empirically analyze how rebalancing and transaction costs would have affected returns of the portfolios. The annualized returns, risk, and Sharpe Ratios are reported in @tbl-performancereport.
 
 ```{python}
 # Estimate the covariance matrix
@@ -350,7 +342,8 @@ def cov1Para(Y,k = None):
     
     # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
     Y2 = pd.DataFrame(np.multiply(Y.to_numpy(),Y.to_numpy()))
-    sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     # sample covariance matrix of squared returns
+    sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     
+    # sample covariance matrix of squared returns
     piMat=pd.DataFrame(sample2.to_numpy()-np.multiply(sample.to_numpy(),sample.to_numpy()))
     
 
@@ -464,9 +457,14 @@ df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) # to get it as percent
 df_rep.round(2)
 ```
 
-The Naive portfolio has the highest mean return of 13.57 but also a relatively high standard deviation of 20.90. Despite the high volatility, it still has the highest Sharpe Ratio of 0.65, indicating the best risk-adjusted return among the four portfolios.  However, an investor with high risk-aversion might prefer the efficient portfolio, as it offers a reasonably high mean return of 8.67 while keeping the risk lower at a standard deviation of 17.16. A rational investor should never choose the Fama French or the parametric portfolio policies. The risk averse investor would prefer the efficient portfolio over the parametric portfolio. The investor seeking high return, would prefer the naive portfolio, which offers higher return for lower risk than the parametric portfolio. As such, we have not been successful in creating profitable portfolio policies in Problem 1 and 2.
+The Naive portfolio offers the highest mean return (13.57) and the best risk-adjusted return (Sharpe Ratio of 0.65) despite high volatility. Risk-averse investors might prefer the efficient portfolio, which provides a decent mean return (8.67) with lower volatility (17.16 standard deviation). The performance of the Fama French and the parametric portfolio policies shows, that we are not successful in creating profitable strategies in Problem 1 and 2.
 
-The portfolio weights of the four portfolios are reported in @fig-portfolioweights. 
+Our backtest strategy only uses the data that is available at the time of the portfolio creation. This means that we do not use any future data to estimate the optimal portfolios, and therefore no look-ahead bias is present in our backtest. However, the Fama French portfolio comes with significant implementation shortfalls. This is due to the exponential increase in parameters as the number of stocks increase, requiring increasing computational power, and yielding noisy and unstable results. Kan and Zhou (2007) show that estimation and model uncertainty has huge implications for the optimal portfolio choice. As such, the estimation uncertainty of the Fama French portfolio is likely the reason for its poor performance in our study. When uncertainty is large enough, the naive portfolio can be optimal which is exactly the case in our study. The estimation uncertainty of the parametrized portfolio is much smaller compared to the Fama French, and the low amount of parameters makes the policiy computationally easy to implement in the real world even for a large amount of stocks. Furthermore, the need for constantly rebalancing the portfolio is reduced (Brandt, et. al (2009)). In the following, we discuss what implications transaction costs could have on the performance of our portfolios, if the portfolio weights are updated throughout the out-of-sample period. The portfolio weights for each strategy are presented in @fig-portfolioweights:
+
+<!-- However, the dataset which we use to test is not true out-of-sample data and the results will be biased based on the chosen period of testing. For instance, should the drawdown of the market around the Great-Financial Crisis be in the testing period or not, and thus could certain portfolios be favored over others based on the testing period and selected stocks? Alternatively, we could generate a dataset from random drawings based on our estimated $\hat{\Sigma}$ and $\hat{\mu}$ and use this as out-of-sample data. This type of backtest would be more robust to the choice of testing period and stocks. However, it would be based on estimator of $\hat{\Sigma}$ and $\hat{\mu}$ which are not the true values and thus not resembling true data.  -->
+
+
+
 
 ```{python}
 # | output : true
@@ -495,9 +493,9 @@ The portfolio weights of the four portfolios are reported in @fig-portfolioweigh
     theme(
           axis_text_x=element_blank(),
           axis_ticks_major_x=element_blank(),
-          figure_size=(6,4), 
+          figure_size=(7,3), 
           )
 )
 
 ```
-
+The Fama French portfolio policy involves going long or short stocks with up to 50% of the combined portfolio value. The Fame French portfolio is more sensitive to changes in firm characteristics, because it has a different estimate for each firm. This sensitivity leads to frequent and significant rebalancing, incurring high transaction costs and potentially diminishing returns. In contrast, the parametric portfolio requires less rebalancing and is therefore expected to perform better in the presence of transaction costs. We see in @fig-portfolioweights that the portfolio weights of the parametric portfolio are more balanced with only one stock being shorted significantly. Similarly, the naive portfolio is anticipated to have an advantage over the Fama French portfolio and the efficient portfolio when accounting for transaction costs.
