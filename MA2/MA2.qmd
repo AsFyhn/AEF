@@ -55,7 +55,7 @@ tidy_finance = sqlite3.connect(
 
 #Reading in crsp_monthly and factors_ff3_monthly
 crsp_monthly = (pd.read_sql_query(
-    sql="SELECT permno, month, ret_excess, mktcap, mktcap_lag, exchange FROM crsp_monthly",
+    sql="SELECT * FROM crsp_monthly",
     con=tidy_finance,
     parse_dates={"month"})
 )
@@ -376,10 +376,8 @@ Here $\hat{\beta}$ represents the estimated coefficients, $X$ is the matrix of p
 First, we clean the dataset by removing the smallest stocks, specifically those with the lowest 20% market capitalization.
 
 ```{python}
-# effectively not important copy. just to create better overview
-ml_crps = crsp_monthly.copy(deep=True)
-# select only stock that are on NEW YORK STOCK EXCHANGE
-ml_crps = ml_crps.loc[ml_crps['exchange']=='NYSE']
+# slice so we only use stocks that are listed on NYSE
+ml_crps = crsp_monthly.loc[crsp_monthly['exchange']=='NYSE']
 ```
 
 ```{python}
@@ -392,25 +390,40 @@ ml_crps = ml_crps[ml_crps['mktcap'] >= ml_crps['month'].map(cut_off)]
 ```
 
 ```{python}
-# create a lagged excess return
-r_df = pd.concat([ml_crps.groupby('permno')['ret_excess'].shift(i) for i in range(2,62)],axis=1) # new dataframe with r lagged
-r_df.columns = [col+f'_lag_{i+2}' for i, col in enumerate(r_df.columns.values)]                  # rename columns
-r_sq_df = r_df**2   # i
-r_sq_df.columns = [col.replace('ret_excess', 'ret_excess_sq') for col in r_sq_df.columns.values]
-ml_crps_lags = pd.concat([ml_crps, r_df, r_sq_df], axis=1)
+# Generate lagged columns efficiently
+lags = range(2, 62)
+lagged_data = {f'ret_lag_{i}': ml_crps.groupby('permno')['ret'].shift(i) for i in lags}
 
+# Create DataFrame from lagged columns
+r_df = pd.DataFrame(data = lagged_data)
 
-# remove all nan values that arises from the lagging
-ml_crps_lags.dropna(subset=[f'ret_excess_lag_{i}' for i in range(2, 62)],inplace=True)
+# Generate squared lagged columns
+squared_lagged_data = {f'ret_sq_lag_{i}': r_df[f'ret_lag_{i}'] ** 2 for i in lags}
+
+# Create DataFrame from squared lagged columns
+r_sq_df = pd.DataFrame(squared_lagged_data)
+
+# # Concatenate original DataFrame with lagged and squared lagged DataFrames
+ml_crps_lags = pd.concat([ml_crps,r_df, r_sq_df], axis=1) # 
+
+# Efficiently remove rows with NaN values in any of the lagged columns
+mask = ml_crps_lags.notna().all(axis=1)
+ml_crps_lags = ml_crps_lags[mask.values]
+
+# Set the index
+ml_crps_lags.sort_values(['permno', 'month'], inplace=True)
 ml_crps_lags.set_index(['permno', 'month'], inplace=True)
 ```
 
 We then demean the dependent variable $r_{i,t+1}$ by month, subtracting the mean from the series, ensuring the mean excess return in each month is zero. Additionally, we standardize the lagged excess returns by month, dividing each by the standard deviation, making the standard deviation across firms one.
 
 ```{python}
+lag_cols = list(lagged_data.keys())
+squared_lag_cols = list(lagged_data.keys())
+
 # create the exogenous and endogenous variables
-exog = ml_crps_lags.loc[:,[f'ret_excess_lag_{i}' for i in range(2,62)]+[f'ret_excess_sq_lag_{i}' for i in range(2,62)]]
-endog = ml_crps_lags.loc[:,'ret_excess']
+exog = ml_crps_lags[lag_cols+squared_lag_cols]
+endog = ml_crps_lags.get('ret')
 
 # Standardize the data - dependent variable has a mean of 0 and the predictors a standard deviation of 1
 endog = endog - endog.groupby('month').mean()
@@ -464,7 +477,8 @@ finder = GridSearchCV(
 )
 
 finder.fit(
-  train_exog, train_exog
+  train_exog, 
+  train_endog
 )
 
 # store the best estimator
