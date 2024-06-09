@@ -55,7 +55,7 @@ tidy_finance = sqlite3.connect(
 
 #Reading in crsp_monthly and factors_ff3_monthly
 crsp_monthly = (pd.read_sql_query(
-    sql="SELECT permno, month, ret_excess, mktcap, mktcap_lag FROM crsp_monthly",
+    sql="SELECT permno, month, ret_excess, mktcap, mktcap_lag, exchange FROM crsp_monthly",
     con=tidy_finance,
     parse_dates={"month"})
 )
