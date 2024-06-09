@@ -276,15 +276,6 @@ Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. 
 w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
 ```
 
-
-
-Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so a negative sign on the market capitalization coefficient makes sense. However, the effect might be biased in our analysis due the construction of the dataset that consists solely of selected stocks with continuous trading history from 2000-2023. As such, none of the analyzed firms went bankrupt during the period, which creates an inherent bias towards small firms. 
-The negative sign of the beta characteristic coefficient aligns with the result in Frazzini & Pedersen (2014), that one should bet against beta. The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on the book-to-market characteristic coefficient is also aligned with the literature. Firms with a higher fundamental value are favored, which makes sense intuitively.
-
-In exercise 3, we evaluate the performance of the paramatric portfolio. To do this, we need to calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation:
-$$\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}},$$
-where $\hat{\theta}$ is the estimated values presented in @tbl-thetas. The optimal portfolio weights, $w^{PP}_{i,t_{end}}$, are presented in @fig-portfolioweights.
-
 # Exercise 3
 In this exercise we compare the portfolios in Problem 1 and 2 with the naive portfolio and the efficient portfolio. The efficient portfolio is calculated as the minimum variance portfolio (MVP) that delivers 2 times the expected return of MVP. In order to calculate the weights, we need estimate of the expected returns, $\tilde{\mu}$, and the variance-covariance matrix, $\tilde{\Sigma}$. We estimate $\tilde{\mu}$ as the sample average of past returns, while using Leidot-Wolf shrinkage estimator for $\tilde{\Sigma}$. It is calculated as: 
 $\tilde{\Sigma} = \hat{\Sigma}^{LW} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}}$ where $\alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
