@@ -205,7 +205,7 @@ Where they use CRRA utility throughout the paper. They parametrize the portfolio
 
 To examine the performance of the parametric portfolio, we start by estimating $\theta$ using the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
 
-$$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t}),$$
+$$\hat{\theta}=\max_\theta E(R_{p,t})-\frac{\gamma}{2}Var(R_{p,t}),$$
 where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. 
 
 ```{python}
