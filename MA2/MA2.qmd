@@ -302,12 +302,12 @@ where $r_{p,t}$ is the return of the portfolio, and $r_{m,i}$ is the return of t
 
 ```{python}
 # Naming 1 decile portfolio as low and 10 decile portfolio as high
-data_for_sorts['portfolio'] = np.where(data_for_sorts["Mom_12_decile"]==1,'low',np.where(data_for_sorts["Mom_12_decile"]==10,'high','neutral'))
+Vw_excess_returns['portfolio'] = np.where(Vw_excess_returns["Mom_12_decile"]==1,'low',np.where(Vw_excess_returns["Mom_12_decile"]==10,'high','neutral'))
 
 # Pivoting the data to get the long-short momentum portfolio
-mom_ls = (data_for_sorts
+mom_ls = (Vw_excess_returns
           .query("portfolio in ['low', 'high']")
-          .pivot_table(index="month", columns="portfolio", values="ret_excess")
+          .pivot_table(index="month", columns="portfolio", values="ret")
           .assign(long_short=lambda x: x["high"]-x["low"])
           .merge(factors_ff3_monthly, how="left", on="month")
   )
