@@ -394,6 +394,8 @@ First, we clean the dataset by removing the smallest stocks, specifically those 
 ```{python}
 # effectively not important copy. just to create better overview
 ml_crps = crsp_monthly.copy(deep=True)
+# select only stock that are on NEW YORK STOCK EXCHANGE
+ml_crps = ml_crps.loc[ml_crps['exchange']=='NYSE']
 ```
 
 ```{python}
