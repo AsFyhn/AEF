@@ -198,9 +198,7 @@ To estimate $\theta$, we use the same approach as in Brandt, et. al (2009). Spec
 We maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. -->
 $$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t})$$
 
-Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\bar{\omega}_{i,t}+\frac{1}{N}\theta'x_{i,t})$ and $\bar{\omega}_{i,t}$ is the naive portfolio.
-
- The results are presented in @tbl-thetas.
+Where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. The results are presented in @tbl-thetas.
 ```{python}
 #| output: true
 
@@ -262,7 +260,7 @@ theta_hat = results.x
 ```{python}
 #| output: asis
 #| label: tbl-thetas
-#| tbl-cap: ""
+#| tbl-cap: "Theta coefficients across characteristics"
 # Creating a DataFrame to present theta_hat
 theta_hat_df = pd.DataFrame([theta_hat], columns=['Beta', 'Size', 'Bm'], index=['Theta'])
 
@@ -284,9 +282,13 @@ The negative sign of the beta characteristic coefficient aligns with the result 
 
 **Bullet 4**
 
-We calculate the portfolio policy weights in December 2015 and save them for use in Problem 3.
+We calculate the portfolio policy weights in December 2015 $(t_{end})$ by inserting $\hat{\theta}$ in the equation:
+$$\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$$
+
+The optimal portfolio weights $w^{PP}$ are presented in @fig-portfolioweights.
 
 # Exercise 3
+To evaluate the performance of the four portfolios, we compute portfolio returns in the out-of-sample period from January 2016 until December 2020, based on the December 2015 portfolio weights. The returns, risk, and Sharpe Ratios are reported in @tbl-performancereport.
 
 ```{python}
 # Estimate the covariance matrix
@@ -433,6 +435,10 @@ df_rep['Mean'] = df_rep['Mean'].mul(100) # to get it as percent
 df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) # to get it as percent
 df_rep.round(2)
 ```
+
+The Naive portfolio has the highest mean return of 13.57 but also a relatively high standard deviation of 20.90. Despite the high volatility, it still has the highest Sharpe Ratio of 0.65, indicating the best risk-adjusted return among the four portfolios.  However, an investor with high risk-aversion might prefer the efficient portfolio, as it offers a reasonably high mean return of 8.67 while keeping the risk lower at a standard deviation of 17.16. A rational investor should never choose the Fama French or the parametric portfolio policies. The risk averse investor would prefer the efficient portfolio over the parametric portfolio. The investor seeking high return, would prefer the naive portfolio, which offers higher return for lower risk than the parametric portfolio. As such, we have not been successful in creating profitable portfolio policies in Problem 1 and 2.
+
+The portfolio weights of the four portfolios are reported in @fig-portfolioweights. 
 
 ```{python}
 # | output : true
