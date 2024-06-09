@@ -51,7 +51,7 @@ gamma = 4
 
 **Exercise 1** 
 
-We start by splitting the dataset into two datasets. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
+We split the dataset into two. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
 
 <!-- We regress excess return, $r_{i,t}$ for each firm $i$ on market excess return, $r_{m,t}$, factor returns of small-minus-big, $r_{smb,t}$, and high-minus-low book-value, $r_{hml,t}$.  
 
@@ -59,14 +59,16 @@ $$r_{i,t} = \alpha_i + \beta_{i}^{m} r_{m,t} +  \beta_i^{smb} r_{smb,t} + \beta_
 
 -->
 
-We estimate the parameters of $\mathbf{A}_i$ and $\mathbf{B}_i$ of the following regression mode:
+We estimate the parameters of $\mathbf{A}_i$ and $\mathbf{B}_i$ of the following regression model:
 $$
 \mathbf{r}_i = \mathbf{A}_i + \mathbf{F} \mathbf{B}_i + \mathbf{E}_i
 $$
-where $\mathbf{r}_i$ is the $T \times 1$ vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a $T \times 1$ vector representing the intercept ($\alpha$) for firm $i$. $\mathbf{F}$ is the $T \times 3$ matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the $T \times 1$ vector of error terms for firm $i$ over time $t$.
+where $\mathbf{r}_i$ is the $T \times 1$ vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a $T \times 1$ vector representing the intercept for firm $i$. $\mathbf{F}$ is the $T \times 3$ matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the $T \times 1$ vector of error terms for firm $i$ over time $t$.
 
 ```{python}
+# create a copy 
 df_ff = deepcopy(df_train)
+
 def ff_regression(data: pd.DataFrame,residuals:bool=True):
     """This function runs the regression of the ff model. 
         Args: 
@@ -84,11 +86,14 @@ def ff_regression(data: pd.DataFrame,residuals:bool=True):
 
 # run the regression for each permno
 ff_reg_coef_unstack = df_ff.groupby('permno').apply(ff_regression,residuals=False)
+
 ff_reg_coef_unstack = ff_reg_coef_unstack.rename(columns={'const':'alpha','mkt_excess':'beta_rm','smb':'beta_smb','hml':'beta_hml'})
+
+# save the coefficients for later calculation
 betas = ff_reg_coef_unstack.iloc[:,1:].values
 alpha = ff_reg_coef_unstack.iloc[:,0].values.reshape(-1)
 
-# obtain the residuals 
+# obtain the residuals for later calculation
 residuals = df_ff.groupby('permno').apply(ff_regression,residuals=True)
 var_res = residuals.groupby('permno').apply(np.var).values
 
@@ -100,14 +105,7 @@ $$\hat{\mu}^{FF} = {\hat{\mathbf{A}}^{FF}} + {\bar{\mathbf{F}}^{FF}} {\hat{\math
 \hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FR} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}
 $$
 
-where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. 
-<!-- 
-We calculate the model-implied covariance matrix as: 
-$$\hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FF} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}$$ 
--->
-
-The correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
-
+where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
 
 ```{python}
 # merge the estimated coeffcients to the original dataframe
@@ -123,8 +121,10 @@ df_ff_model_pivot = df_ff_model.pivot(index='month',columns='permno',values='ret
 # mean of all factor returns for each firm 
 factor_returns = df_ff.groupby('permno')[['mkt_excess','smb','hml']].mean()
 
-# calculate the mean and covariance matrix
+### calculate the expected return vector. 
+# notice the approach is the same as calculating the \hat{r}_{i,t} and then taking the average
 mu_ff = (alpha + np.sum(betas*factor_returns,axis=1)+ 1).values 
+### calculate the variance-covariance matrix
 S_ff = (betas@df_ff[['mkt_excess','smb','hml']].cov()@betas.T) + np.diag(var_res)
 ```
 
@@ -133,11 +133,13 @@ S_ff = (betas@df_ff[['mkt_excess','smb','hml']].cov()@betas.T) + np.diag(var_res
 #| label: tbl-coefficientdistribution
 #| tbl-cap: "Distribution of the estimated coefficients"
 
+# transform the dataframe so it is easier to loop through
 ff_reg_coef = (ff_reg_coef_unstack.stack()
     .reset_index()
     .rename(columns={'level_1':'coeff',0:'value'})
     )
 
+# initialize a dataframe with summary statistics
 df_coef_summary = pd.DataFrame(
     index=ff_reg_coef['coeff'].unique(),
     columns=['Mean','Median','Std. Dev.','25th perc','75th perc','Min','Max']
@@ -221,9 +223,10 @@ def calculate_naive_portfolio(N):
     """
     return 1/N * np.ones(N)
 
-#Only data before 2015
+#Only data before 2016
 df_pp = deepcopy(df_train)
 
+# columns are the excess return for each company
 r_it =  df_pp.pivot(index='month',columns='permno',values='ret_excess')
 
 # Calculating the portfolio policy weights for at given theta
@@ -264,6 +267,7 @@ results = minimize(
     x0=np.ones(3),
     options={'maxiter':1e6}
 )
+# store results
 theta_hat = results.x
 ```
 
@@ -295,7 +299,7 @@ The annualized returns, risk, and Sharpe Ratios for the four strategies are repo
 
 ```{python}
 # Estimate the covariance matrix
-def cov1Para(Y,k = None):
+def cov1Para(Y,k=None):
     """
     This function estimates the covariance matrix for the stocks in the dataset
     """
@@ -323,7 +327,7 @@ def cov1Para(Y,k = None):
     meanvar= sum(diag)/len(diag)
     target=meanvar*np.eye(p)
     
-    # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+    # estimate the parameter that they call pi in Ledoit and Wolf (2003, JEF)
     Y2 = pd.DataFrame(np.multiply(Y.to_numpy(),Y.to_numpy()))
     sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     
     # sample covariance matrix of squared returns
@@ -332,7 +336,7 @@ def cov1Para(Y,k = None):
 
     pihat = sum(piMat.sum())
     
-    # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+    # estimate the parameter that they call gamma in Ledoit and Wolf (2003, JEF)
     gammahat = np.linalg.norm(sample.to_numpy()-target,ord = 'fro')**2
     
     # compute shrinkage intensity
@@ -346,14 +350,20 @@ def cov1Para(Y,k = None):
 ```
 
 ```{python}
-df_pf_train = df.loc[df['month']<='2015-12-31']
-df_pf_test = df.loc[df['month']>'2015-12-31']
+# get a copy of already sliced data
+df_pf_train = deepcopy(df_train)
+df_pf_test = deepcopy(df_test)
+
+# out-of-sample returns 
 out_of_sample_r = df_pf_test.pivot(index='month',columns='permno',values='ret_excess').values
+# calculate sample variance-covariance
 out_of_sample_sigma = np.cov(out_of_sample_r, rowvar=False)
 ```
 
 ```{python}
+# in-sample returns
 df_pf_train_pivot = df_pf_train.pivot(index='month',columns='permno',values='ret_excess')
+# sample average and variance-covariance matrix
 mu_tilde = df_pf_train_pivot.mean(axis=0).values
 S_tilde = cov1Para(df_pf_train_pivot).values
 del df_pf_train_pivot
@@ -386,11 +396,14 @@ def calculate_efficient_portfolio(Sigma, mu, gamma, return_multiple = 2):
     efp_weights = mvp_weights + lambda_tilde/2 * (Sigma_inv@mu - D* mvp_weights ) 
     return efp_weights
 
-# create the portfolios 
+#### create the portfolios 
+# naive portfolio
 naive_portfolio = calculate_naive_portfolio(mu_tilde.shape[0])
+# efficient portfolio that delivers two times the expected return of mvp
 eff_portfolio = calculate_efficient_portfolio(S_tilde, mu_tilde, gamma)
-ex1_portfolio = weights_analytical
-ex2_portfolio = w_pp
+# already defined portfolio
+ex1_portfolio = deepcopy(weights_analytical)
+ex2_portfolio = deepcopy(w_pp)
 ```
 
 ```{python}
@@ -435,8 +448,10 @@ df_rep_weights = pd.DataFrame({
 # | label : tbl-performancereport
 # | tbl-cap: "Annualized portfolio measures"
 
-df_rep['Mean'] = df_rep['Mean'].mul(100) # to get it as percent
-df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) # to get it as percent
+# We multiply columns with 100 so (1=1%)
+df_rep['Mean'] = df_rep['Mean'].mul(100) 
+df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) 
+# round it to two decimals
 df_rep.round(2)
 ```
 
@@ -461,6 +476,8 @@ The FF portfolio involves large variance in the weights. This is intuitive due t
 # | output : true
 # | label : fig-portfolioweights
 # | fig-cap: Portfolio Weights for different portfolios
+
+# four plots with the weights of all portfolios
 (
     ggplot(
         df_rep_weights, 
