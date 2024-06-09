@@ -49,7 +49,7 @@ T_test = df_test['month'].nunique()
 gamma = 4
 ```
 
-**Exercise 1**
+**Exercise 1** 
 
 We start by splitting the dataset into two datasets. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
 
@@ -191,7 +191,7 @@ opt_w = minimize(
 if not np.allclose(opt_w,weights_analytical): print("Check your calculations again")
 ```
 
-**Exercise 2**
+**Exercise 2** 
 
 The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. The intuition behind $\theta$ is that it captures the relationship between characteristics and expected returns, thereby tilting the portfolio towards stocks with desirable characteristics.
 <!-- 
@@ -276,7 +276,8 @@ Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. 
 w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
 ```
 
-# Exercise 3
+**Exercise 3** 
+
 In this exercise we compare the portfolios in Problem 1 and 2 with the naive portfolio and the efficient portfolio. The efficient portfolio is calculated as the minimum variance portfolio (MVP) that delivers 2 times the expected return of MVP. In order to calculate the weights, we need estimate of the expected returns, $\tilde{\mu}$, and the variance-covariance matrix, $\tilde{\Sigma}$. We estimate $\tilde{\mu}$ as the sample average of past returns, while using Leidot-Wolf shrinkage estimator for $\tilde{\Sigma}$. It is calculated as: 
 $\tilde{\Sigma} = \hat{\Sigma}^{LW} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}}$ where $\alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
 <!-- The target matrix is given by:
@@ -483,7 +484,7 @@ The FF portfolio involves large variance in the weights. This is intuitive due t
     theme(
           axis_text_x=element_blank(),
           axis_ticks_major_x=element_blank(),
-          figure_size=(7,2), 
+          figure_size=(7,3), 
           )
 )
 
