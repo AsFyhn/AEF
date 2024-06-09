@@ -258,6 +258,7 @@ formatted_dfAgg_v2 = merged.style.format({
     'p-value': '{:.2f}',
     'na_rep': "" 
 })
+# hide index
 formatted_dfAgg_v2.hide()
 formatted_dfAgg_v2
 ```
