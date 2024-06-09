@@ -51,7 +51,7 @@ gamma = 4
 
 **Exercise 1**
 
-We start by splitting the dataset into two datasets with all observations before 2016 and one after 2016. The first will used throughout the study as a training dataset, and the second dataset will be used to evaluate the performance of the portfolio created. Both datasets contain information for the same `{python} N` companies. The training dataset includes `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
+We start by splitting the dataset into two datasets. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
 
 <!-- We regress excess return, $r_{i,t}$ for each firm $i$ on market excess return, $r_{m,t}$, factor returns of small-minus-big, $r_{smb,t}$, and high-minus-low book-value, $r_{hml,t}$.  
 
@@ -156,14 +156,14 @@ for coef in ff_reg_coef['coeff'].unique():
 df_coef_summary.astype(float).round(4)
 ```
 
-In @tbl-coefficientdistribution, we report descriptive statistics on the estimated parameters. We see that both the average and median of $\hat{\alpha}$ is close to zero. The average of $\hat{\beta}_{i}^{m}$ is the highest among the coefficients, meaning that the market factor is the most important factor. The standard deviation is the lowest which means it is stable across stocks. Both the averages of the $\hat{\beta}_{i}^{smb}$ and $\hat{\beta}_{i}^{hml}$ are both around 0.48 and with somewhat similar standard deviations. However, the median of $\hat{\beta}_{i}^{smb}$ is lower than that of $\hat{\beta}_{i}^{hml}$. This is due to a couple of stocks having a very low $\hat{\beta}_{i}^{hml}$, which brings down the median. 
+In @tbl-coefficientdistribution, we report descriptive statistics on the estimated parameters. We see that both the average and median of $\hat{\alpha}$ is close to zero. The average of $\hat{\beta}_{i}^{m}$ is the highest among the coefficients, meaning that the market factor is the most important factor. The standard deviation is the lowest which means it is stable across stocks. Both the averages of the $\hat{\beta}_{i}^{smb}$ and $\hat{\beta}_{i}^{hml}$ are around 0.48 and with somewhat similar standard deviations. However, the median of $\hat{\beta}_{i}^{smb}$ is lower than that of $\hat{\beta}_{i}^{hml}$. This is due to a couple of stocks having a very low $\hat{\beta}_{i}^{hml}$, which brings down the median. 
 
 
 Based on model-implied expected excess return vector, and the model-implied covariance matrix, we create a portfolio where the weights are given by:
 $$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
 which has the analytical solution $\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$
 
-We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance will be reported in Exercise 3. 
+We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance is reported in Exercise 3. 
 
 ```{python}
 # find the inverse of the estimated variance-covariance matrix
@@ -193,34 +193,21 @@ if not np.allclose(opt_w,weights_analytical): print("Check your calculations aga
 
 **Exercise 2**
 
-The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. In other words, $\theta$ determines how much weight is placed on each stock characteristic in determining the optimal portfolio weights. The intuition behind $\theta$ is that it captures the relationship between the characteristics of the stocks and their expected returns, thereby allowing the portfolio to be tilted towards stocks with desirable characteristics. 
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. The intuition behind $\theta$ is that it captures the relationship between characteristics and expected returns, thereby tilting the portfolio towards stocks with desirable characteristics.
 <!-- 
 (Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til)) -->
 
-Brandt et al. (2009), estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
-<!-- 
-$$\frac{1}{T} \sum_{t=0}^{T-1} h(r_{t+1}, x_t; \theta) = \frac{1}{T} \sum_{t=0}^{T-1} u'(r_{p,t+1})(x_t^Tr_{t+1}) = 0$$
+Brandt et al. (2009) estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
 
-And is interpreted as a method of moments estimator. The asymptotic covariance matric is:
-
-$$
-\Sigma_{\theta} \equiv \text{AsyVar}(\hat{\theta}) = \frac{1}{T} \left[ G^T V^{-1} G \right]^{-1},
-$$
-Where $G = \frac{1}{T} \sum_{t=0}^{T-1} \frac{\partial h(r_{t+1}, x_t; \theta)}{\partial \theta}$, and V estimates the matrix $h(r,x;\theta)$. -->
 $$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
 
-Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance or imprecise coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly. The computational requirements only grow with the number of characteristics and not with the number of stocks. 
+Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly when implementing the portfolio in the real world. However, direct weight parametrization offer less intuitive interpretations because the weight on each characteristic is constant through stocks and time. The two-step approach in Problem 1 offer more straightforward economic interpretations.
 
-However, direct weight parametrization offer less intuitive interpretations. The weight on each characteristic is constant through stocks and time, which implies that e.g. the characteristic “book-to-market ratio” has the same effect on a car manufacturing company in 1980 as it has on a tech company in 2000. Intuitively, that does not make much sense. The two-step approach in Problem 1 offer more straightforward economic interpretations.
+To examine the performance of the parametric portfolio, we start by estimating $\theta$ using the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
 
-To investigate the parametric portfolio policies further, we estimate $\theta$ on the dataset provided for the exam using the same approach as in Brandt, et. al (2009). Specifically, we solve the following optimization problem:
-<!-- 
-We maximize the certainty equivalent $CE(\omega^{PP})$ using an approach that resembles method of moments. First, we calculate the portfolio weights $(\omega^{PP})$ for any $\theta$ (essentially just defining $\omega^{PP}_{i,t}$). Then, we plug $\omega^{PP}_{i,t}$ into $CE(\omega^{PP}_{i,t})$ and finally we maximize the function subject to $\theta$ to get $\hat{\theta}$. -->
 $$\hat{\theta}=\max_\theta E(R_{r,t})-\frac{\gamma}{2}Var(R_{r,t}),$$
 where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. 
 
-
-The results are presented in @tbl-thetas.
 ```{python}
 #| output: true
 
@@ -279,22 +266,14 @@ results = minimize(
 )
 theta_hat = results.x
 ```
-```{python}
-#| output: asis
-#| label: tbl-thetas
-#| tbl-cap: "Theta coefficients across characteristics"
-# Creating a DataFrame to present theta_hat
-theta_hat_df = pd.DataFrame([theta_hat], columns=['Beta', 'Size', 'Bm'], index=['Theta'])
 
-theta_hat_df.round(3)
+We estimate the coefficients to $\hat{\theta}=(\hat{\theta}_{Beta},\hat{\theta}_{Size},\hat{\theta}_{Bm})=(`{python} theta_hat[0].round(2)`,`{python} theta_hat[1].round(2)`,`{python} theta_hat[2].round(2)`)$. Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so the negative sign of $\hat{\theta}_{Size}$ makes sense. The negative sign of $\hat{\theta}_{Beta}$ aligns with the result in Frazzini & Pedersen (2014). The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on $\hat{\theta}_{Bm}$ is also aligned with the literature. The intuition is that firms with a higher fundamental value are favored.
 
-```
-
+Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation $\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$. We present $w^{PP}_{i,t_{end}}$  in @fig-portfolioweights.
 
 ```{python}
 # calculate the portfolio weights based on the optimal theta
 w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
-
 ```
 
 
