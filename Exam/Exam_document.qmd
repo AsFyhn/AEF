@@ -1,5 +1,5 @@
 ---
-title: Mandatory Assignment 2
+title: Exam' assignment
 author: Exam number 73 & 85
 date: 2024-06-10
 execute:
@@ -8,7 +8,7 @@ execute:
   output: false
 format:
   pdf:
-    number-sections: true
+    number-sections: False
     colorlinks: true
     geometry:
       - top=20mm
@@ -47,10 +47,26 @@ df_test = df.loc[df['month']>'2015-12-31']
 # Number of stocks and months in the training dataset
 N = df_train['permno'].nunique()
 T = df_train['month'].nunique()
+# 
+N_test = df_test['permno'].nunique()
+T_test = df_test['month'].nunique()
 gamma = 4
 ```
 
-**Exercise 1**
+We start by splitting the dataset into two datasets with all observations before 2016 and one after 2016. The first will used throughout the study as a training dataset, and the second dataset will be used to evaluate the performance of the portfolio created. Both datasets contain information for the same `{python} N` companies. The training dataset includes `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
+
+
+# Exercise 1
+We regress excess return, $r_{i,t}$ for each firm $i$ on market excess return, $r_{m,t}$, factor returns of small-minus-big, $r_{smb,t}$, and high-minus-low book-value, $r_{hml,t}$. 
+$$r_{i,t} = \alpha_i + \beta_{i}^{m} r_{m,t} +  \beta_i^{smb} r_{smb,t} + \beta_i^{hml} r_{hml,t} + \epsilon_{i,t}$$
+
+or using matrix notation:
+
+$$
+\mathbf{r}_i = \mathbf{A}_i + \mathbf{F} \mathbf{B}_i + \mathbf{E}_i
+$$
+where $\mathbf{r}_i$ is the $T \times 1$ vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a $T \times 1$ vector representing the intercept ($\alpha$) for firm $i$. $\mathbf{F}$ is the $T \times 3$ matrix of factor returns over time $t$, where each column represents the factor returns. $\mathbf{B}_i$ is the $3 \times 1$ vector of betas for firm $i$, $[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$. Lastly, $\mathbf{E}_i$ is the $T \times 1$ vector of error terms for firm $i$ over time $t$.
+
 ```{python}
 df_ff = deepcopy(df_train)
 def ff_regression(data: pd.DataFrame,residuals:bool=True):
@@ -80,34 +96,17 @@ var_res = residuals.groupby('permno').apply(np.var).values
 
 ```
 
-```{python}
-#| output: true
-#| fig-label: fig-coefficientdistribution
-#| fig-cap: "Distribution of the estimated coefficients"
+Using the estimated parameters, we calculate the model-implied expected excess return vector, $\hat{\mu}^{FF}$ and the model-implied covariance matrix, $\hat{\Sigma}^{FF}$ as: 
+$$\hat{\mu}^{FF} = {\hat{\mathbf{A}}^{FF}} + {\bar{\mathbf{F}}^{FF}} {\hat{\mathbf{B}}^{FF}}$$
 
-ff_reg_coef = (ff_reg_coef_unstack.stack()
-    .reset_index()
-    .rename(columns={'level_1':'coeff',0:'value'})
-    )
-(
-    ggplot(
-        ff_reg_coef.query('coeff != "residuals"') # we don't want to plot the residuals
-        ) + 
-    aes(x = 'value') +
-    geom_histogram(binwidth=0.05, fill='skyblue') +
-    facet_wrap('coeff',scales='free') + 
-    labs(x='Coefficient',y=element_blank()) +
-    theme_minimal() +
-    theme(
-      legend_position=(0.15,0.9),
-      legend_title=element_blank(),
-      legend_direction='vertical',
-      figure_size=(5,4),
-      )
-).draw()
-```
+where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time. 
 
-Interpretation: the mean of alpha is close to 0, while the mean of all the other values are well above zero. This means that an increase to either of the $x$ variable increases so does the stock's excess return.
+We calculate the model-implied covariance matrix as: 
+$$\hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FF} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}$$
+where $\hat{\Sigma}^{FF}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. 
+
+The correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
+
 
 ```{python}
 # merge the estimated coeffcients to the original dataframe
@@ -128,11 +127,43 @@ mu_ff = (alpha + np.sum(betas*factor_returns,axis=1)+ 1).values
 S_ff = (betas@df_ff[['mkt_excess','smb','hml']].cov()@betas.T) + np.diag(var_res)
 ```
 
-The correlation between the excess returns of two stocks depends on their factor loadings and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated.
+```{python}
+#| output: true
+#| label: tbl-coefficientdistribution
+#| tbl-cap: "Distribution of the estimated coefficients"
 
+ff_reg_coef = (ff_reg_coef_unstack.stack()
+    .reset_index()
+    .rename(columns={'level_1':'coeff',0:'value'})
+    )
+
+df_coef_summary = pd.DataFrame(
+    index=ff_reg_coef['coeff'].unique(),
+    columns=['Mean','Median','Std. Dev.','25th perc','75th perc','Min','Max']
+)
+
+for coef in ff_reg_coef['coeff'].unique():
+    df_coef_summary.loc[coef] = [
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].mean(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].median(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].std(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].quantile(0.25),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].quantile(0.75),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].min(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].max(),
+    ]
+df_coef_summary.astype(float).round(4)
+```
+
+In @tbl-coefficientdistribution, we report descriptive statistics on the estimated parameters. We see that both the average and median of $\hat{\alpha}$ is close to zero. The average of $\hat{\beta}_{i}^{m}$ is the highest among the coefficients, meaning that the market factor is the most important factor. The standard deviation is the lowest which means it is stable across stocks. Both the averages of the $\hat{\beta}_{i}^{smb}$ and $\hat{\beta}_{i}^{hml}$ are both around 0.48 and with somewhat similar standard deviations. However, the median of $\hat{\beta}_{i}^{smb}$ is lower than that of $\hat{\beta}_{i}^{hml}$. This is due to a couple of stocks having a very low $\hat{\beta}_{i}^{hml}$, which brings down the median. 
+
+
+Based on model-implied expected excess return vector, and the model-implied covariance matrix, we create a portfolio where the weights are given by:
 $$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
-has the analytical solution
+which has the analytical solution
 $$\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$$
+
+We create a portfolio with the optimal weights using all avaliable data in the training dataset. The out-of-sample performance will be reported in Exercise 3. 
 
 ```{python}
 # find the inverse of the estimated variance-covariance matrix
@@ -147,10 +178,7 @@ numerator = S_ff_inv @ mu_ff - ((B @ mu_ff - gamma) / C) * (S_ff_inv @ iota)
 
 # Calculate the optimal weights
 weights_analytical = numerator / gamma
-```
 
-
-```{python}
 # do a check of analytical result with a numerical optimizer
 obj_fun = lambda w: - ((w @ mu_ff) - (gamma / 2) * w.T @ S_ff @ w )
 opt_w = minimize(
@@ -164,7 +192,7 @@ if not np.allclose(opt_w,weights_analytical): print("Check your calculations aga
 ```
 
 
-**Exercise 2**
+# Exercise 2
 
 **Bullet 1**
 
