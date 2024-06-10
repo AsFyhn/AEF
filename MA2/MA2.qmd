@@ -58,8 +58,7 @@ factors_ff3_monthly = pd.read_sql_query(
   con=tidy_finance,
   parse_dates={"month"}
 )
-#
-#Transforming the crsp_monthly dataset to contain mktcap_lag_12
+#Transforming the crsp_monthly dataset to contain mktcap_lag_12.
 mktcap_lag_12 = (crsp_monthly
   .assign(month=lambda x: x["month"]+pd.DateOffset(months=12))
   .get(["permno", "month", "mktcap"])
