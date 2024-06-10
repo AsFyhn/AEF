@@ -523,3 +523,5 @@ a['Abs. Value'] = a.groupby('coeff')['value'].apply(cut_func).values
 ```
 
 
+
+
