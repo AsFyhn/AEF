@@ -41,7 +41,7 @@ tidy_finance = sqlite3.connect(
 )
 ```
 
-Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
+Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. We find a positive correlation between last year’s returns and future returns as in Jegadeesh and Titman (1993). A portfolio that goes long high momentum stocks and short low momentum stocks over the past 6-12 months earns abnormal returns. However, 2-5 months and 13-20 months lagged momentum long/short portfolios earn negative excess returns.
 
 # Exercise 1 and 2:
 
@@ -474,7 +474,7 @@ plot_df = pd.concat([plot_df,plot_df.iloc[index-3:index+4].assign(Sample='Zoom')
   ).draw()
 ```
 
-In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
+In the @fig-coeffientplot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
 We notice a distinct pattern in the estimated coefficients:
 
 - For $k<6$, the coefficient, $\hat{b}_k$, is negative, indicating a negative relationship between past excess returns and future returns. The $\hat{c_k}$ are relatively large. Indicating a short term relationship between volatility (large move in either direction) and excess return in the current period. Any pattern in $\hat{c_k}$ is vanished.
@@ -488,7 +488,8 @@ In the medium run (6-12 months), there's evidence suggesting a momentum strategy
 
 ```{python}
 #| output: true
-#| label: fig-coeffient_plot
+#| label: fig-coeffientplot
+#| fig-cap: Estimated coefficients
 
 # run the best estimator on the rest of the data
 names = best_est.feature_names_in_
