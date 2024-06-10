@@ -1,0 +1,505 @@
+---
+execute:
+  echo: false
+  warning: false
+  output: false
+format:
+  pdf:
+    number-sections: False
+    colorlinks: true
+    geometry:
+      - top=15mm
+      - left=15mm
+      - bottom=20mm
+      - right=15mm
+    cite-method: natbib
+    fontsize: 11pt
+jupyter: python3
+---
+```{python}
+import pandas as pd
+import numpy as np
+import sqlite3
+import statsmodels.api as sm
+import tabulate
+
+from copy import deepcopy
+from plotnine import *
+from mizani.formatters import percent_format
+from mizani.colors.brewer.sequential import Blues as Blues
+from regtabletotext import prettify_result
+import os
+from scipy.optimize import minimize
+```
+
+
+```{python}
+#Load data
+df = pd.read_csv(r"../../data/data-exam-2024.csv") 
+# slice data set into training and test
+df_train = df.loc[df['month']<='2015-12-31']
+df_test = df.loc[df['month']>'2015-12-31']
+
+# Number of stocks and months in the training dataset
+N = df_train['permno'].nunique()
+T = df_train['month'].nunique()
+# 
+N_test = df_test['permno'].nunique()
+T_test = df_test['month'].nunique()
+gamma = 4
+```
+
+**Exercise 1** 
+
+We split the dataset into two. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
+
+<!-- We regress excess return, $r_{i,t}$ for each firm $i$ on market excess return, $r_{m,t}$, factor returns of small-minus-big, $r_{smb,t}$, and high-minus-low book-value, $r_{hml,t}$.  
+
+$$r_{i,t} = \alpha_i + \beta_{i}^{m} r_{m,t} +  \beta_i^{smb} r_{smb,t} + \beta_i^{hml} r_{hml,t} + \epsilon_{i,t}$$
+
+-->
+
+We estimate the parameters of $\mathbf{A}_i$ and $\mathbf{B}_i$ of the following regression model:
+$$
+\mathbf{r}_i = \mathbf{A}_i + \mathbf{F} \mathbf{B}_i + \mathbf{E}_i
+$$
+where $\mathbf{r}_i$ is the $T \times 1$ vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a $T \times 1$ vector representing the intercept for firm $i$. $\mathbf{F}$ is the $T \times 3$ matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the $T \times 1$ vector of error terms for firm $i$ over time $t$.
+
+```{python}
+# create a copy 
+df_ff = deepcopy(df_train)
+
+def ff_regression(data: pd.DataFrame,residuals:bool=True):
+    """This function runs the regression of the ff model. 
+        Args: 
+          data (pd.DataFrame): data used for the regression
+          residuals (bool): determines whether to return residuals or parameters"""
+    y_value = data['ret_excess']
+    x_values = data[['mkt_excess','smb','hml']]
+    res = sm.OLS(y_value, sm.add_constant(x_values)).fit(cov_type='HC1')
+
+    if residuals:
+        return_values = res.resid
+    else: 
+        return_values = res.params
+    return return_values
+
+# run the regression for each permno
+ff_reg_coef_unstack = df_ff.groupby('permno').apply(ff_regression,residuals=False)
+
+ff_reg_coef_unstack = ff_reg_coef_unstack.rename(columns={'const':'alpha','mkt_excess':'beta_rm','smb':'beta_smb','hml':'beta_hml'})
+
+# save the coefficients for later calculation
+betas = ff_reg_coef_unstack.iloc[:,1:].values
+alpha = ff_reg_coef_unstack.iloc[:,0].values.reshape(-1)
+
+# obtain the residuals for later calculation
+residuals = df_ff.groupby('permno').apply(ff_regression,residuals=True)
+var_res = residuals.groupby('permno').apply(np.var).values
+
+```
+
+Using the estimated parameters, we calculate the model-implied expected excess return vector, $\hat{\mu}^{FF}$ and the model-implied covariance matrix, $\hat{\Sigma}^{FF}$ as: 
+$$\hat{\mu}^{FF} = {\hat{\mathbf{A}}^{FF}} + {\bar{\mathbf{F}}^{FF}} {\hat{\mathbf{B}}^{FF}}
+\;\; \text{and} \;\;
+\hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FR} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}
+$$
+
+where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
+
+```{python}
+# merge the estimated coeffcients to the original dataframe
+df_ff_model = df_ff.merge(ff_reg_coef_unstack,on='permno',how='left')
+# model the excess return for each stock
+df_ff_model['ret_excess_model'] = (df_ff_model['alpha'] + 
+                                   df_ff_model['beta_rm']*df_ff_model['mkt_excess'] + 
+                                   df_ff_model['beta_smb']*df_ff_model['smb'] + 
+                                   df_ff_model['beta_hml']*df_ff_model['hml'])
+# pivot the dataframe to have the excess return for each stock in columns
+df_ff_model_pivot = df_ff_model.pivot(index='month',columns='permno',values='ret_excess_model')  
+
+# mean of all factor returns for each firm 
+factor_returns = df_ff.groupby('permno')[['mkt_excess','smb','hml']].mean()
+
+### calculate the expected return vector. 
+# notice the approach is the same as calculating the \hat{r}_{i,t} and then taking the average
+mu_ff = (alpha + np.sum(betas*factor_returns,axis=1)+ 1).values 
+### calculate the variance-covariance matrix
+S_ff = (betas@df_ff[['mkt_excess','smb','hml']].cov()@betas.T) + np.diag(var_res)
+```
+
+```{python}
+#| output: true
+#| label: tbl-coefficientdistribution
+#| tbl-cap: "Distribution of the estimated coefficients"
+
+# transform the dataframe so it is easier to loop through
+ff_reg_coef = (ff_reg_coef_unstack.stack()
+    .reset_index()
+    .rename(columns={'level_1':'coeff',0:'value'})
+    )
+
+# initialize a dataframe with summary statistics
+df_coef_summary = pd.DataFrame(
+    index=ff_reg_coef['coeff'].unique(),
+    columns=['Mean','Median','Std. Dev.','25th perc','75th perc','Min','Max']
+)
+
+for coef in ff_reg_coef['coeff'].unique():
+    df_coef_summary.loc[coef] = [
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].mean(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].median(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].std(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].quantile(0.25),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].quantile(0.75),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].min(),
+        ff_reg_coef.loc[ff_reg_coef['coeff']==coef,'value'].max(),
+    ]
+df_coef_summary.astype(float).round(4)
+```
+
+In @tbl-coefficientdistribution, we report descriptive statistics on the estimated parameters. We see that both the average and median of $\hat{\alpha}$ is close to zero. The average of $\hat{\beta}_{i}^{m}$ is the highest among the coefficients, meaning that the market factor is the most important factor. The standard deviation is the lowest which means it is stable across stocks. Both the averages of the $\hat{\beta}_{i}^{smb}$ and $\hat{\beta}_{i}^{hml}$ are around 0.48 and with somewhat similar standard deviations. However, the median of $\hat{\beta}_{i}^{smb}$ is lower than that of $\hat{\beta}_{i}^{hml}$. This is due to a couple of stocks having a very low $\hat{\beta}_{i}^{hml}$, which brings down the median. 
+
+
+Based on model-implied expected excess return vector, and the model-implied covariance matrix, we create a portfolio where the weights are given by:
+$$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
+which has the analytical solution $\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$
+
+We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance is reported in Exercise 3. 
+
+```{python}
+# find the inverse of the estimated variance-covariance matrix
+S_ff_inv = np.linalg.inv(S_ff)
+# define iota: vector of ones
+iota = np.ones(N)
+
+# Calculate the numerator part
+B = iota @ S_ff_inv
+C = B @ iota
+numerator = S_ff_inv @ mu_ff - ((B @ mu_ff - gamma) / C) * (S_ff_inv @ iota)
+
+# Calculate the optimal weights
+weights_analytical = numerator / gamma
+
+# do a check of analytical result with a numerical optimizer
+obj_fun = lambda w: - ((w @ mu_ff) - (gamma / 2) * w.T @ S_ff @ w )
+opt_w = minimize(
+    fun=obj_fun,
+    x0=weights_analytical,
+    constraints=({'type': 'eq', 'fun': lambda w: np.sum(w) - 1}),
+    # bounds=[(0, 1) for i in range(N)]
+    options={'maxiter':1e6}
+).x
+if not np.allclose(opt_w,weights_analytical): print("Check your calculations again")
+```
+
+**Exercise 2** 
+
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. The intuition behind $\theta$ is that it captures the relationship between characteristics and expected returns, thereby tilting the portfolio towards stocks with desirable characteristics.
+<!-- 
+(Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til)) -->
+
+Brandt et al. (2009) estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
+
+$$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
+
+Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly when implementing the portfolio in the real world. However, direct weight parametrization offer less intuitive interpretations because the weight on each characteristic is constant through stocks and time. The two-step approach in Problem 1 offer more straightforward economic interpretations.
+
+To examine the performance of the parametric portfolio, we start by solving the following optimization problem:
+$$\hat{\theta}=\max_\theta E(R_{p,t})-\frac{\gamma}{2}Var(R_{p,t}),$$
+where $R_{p,t}=1+\sum^N_{i=1}r_{i,t}(\frac{1}{N}+\frac{1}{N}\theta'x_{i,t})$. 
+
+```{python}
+#| output: true
+
+def calculate_naive_portfolio(N):
+    """
+    This function calculates the portfolio weights of the naive portfolio
+        Args:
+            N: the number of assets
+        Returns:
+            the portfolio weights
+    """
+    return 1/N * np.ones(N)
+
+#Only data before 2016
+df_pp = deepcopy(df_train)
+
+# columns are the excess return for each company
+r_it =  df_pp.pivot(index='month',columns='permno',values='ret_excess')
+
+# Calculating the portfolio policy weights for at given theta
+def calc_pp_weight(theta): 
+    """
+    This function calculates the portfolio weights for the portfolio optimization problem
+        Args: 
+            theta: the vector of parameters
+        Returns:
+            the portfolio weights
+    """
+    df_pp.loc[:,'x'] = (df_pp[['beta','size','bm']]*theta.T).sum(axis=1)
+    return (df_pp.pivot(index='month',columns='permno',values='x')*1/N + calculate_naive_portfolio(N))
+
+# Defining the objective function for the given certainty equivalent
+def objective_function_ex2(theta):
+    """
+    This function calculates the objective function for the portfolio optimization problem
+        Args:
+            theta: the vector of parameters
+        Returns:
+            the value of the objective function
+    """
+    # calculate the portfolio weights for the given theta
+    w_it = calc_pp_weight(theta)
+    # calculate the return of the portfolio
+    R_pt = (w_it*r_it).sum(axis=1) + 1
+    # calculate the expected return as the mean of the portfolios past returns
+    E_R = R_pt.mean()
+    # calculate the variance of the portfolio returns
+    Var_R = R_pt.var()
+
+    return -(E_R - (gamma/2)*Var_R) # return the negative value of the objective function
+
+# Maximizing the objective function
+results = minimize(
+    fun=objective_function_ex2,
+    x0=np.ones(3),
+    options={'maxiter':1e6}
+)
+# store results
+theta_hat = results.x
+```
+
+We estimate the coefficients to $\hat{\theta}=(\hat{\theta}_{Beta},\hat{\theta}_{Size},\hat{\theta}_{Bm})=(`{python} theta_hat[0].round(2)`,`{python} theta_hat[1].round(2)`,`{python} theta_hat[2].round(2)`)$. Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so the negative sign of $\hat{\theta}_{Size}$ makes sense. The negative sign of $\hat{\theta}_{Beta}$ aligns with the result in Frazzini & Pedersen (2014). The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on $\hat{\theta}_{Bm}$ is also aligned with the literature. The intuition is that firms with a higher fundamental value are favored.
+
+Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation $\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$. We present $w^{PP}_{i,t_{end}}$  in @fig-portfolioweights.
+
+```{python}
+# calculate the portfolio weights based on the optimal theta
+w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
+```
+
+**Exercise 3** 
+
+In this exercise we compare the portfolios in Problem 1 and 2 with the naive portfolio and the efficient portfolio. The efficient portfolio is calculated as the portfolio that delivers 2 times the expected return of minimum variance portfolio. In order to calculate the portfolio weights, we need an estimate of the expected returns, $\tilde{\mu}$, and the variance-covariance matrix, $\tilde{\Sigma}$. We estimate $\tilde{\mu}$ as the sample average of past returns, while using the Leidot-Wolf shrinkage estimator for $\tilde{\Sigma}$. It is calculated as: 
+$\tilde{\Sigma} = \hat{\Sigma}^{LW} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}}$ where $\alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
+<!-- The target matrix is given by:
+$$
+\hat{\Sigma}_{\text{target}} = I_N (\frac{1}{N} \sum_{i=1}^N var(r_{i,t}))
+$$
+where $I_N$ is the identity matrix of size $N \times N$ and $var(r_{i,t})$ is the variance of the returns of company $i$.
+The linear shrinkage parameter is given by: $\alpha = \frac{\hat{\pi}}{\hat{\gamma}}$, where $\hat{\pi}$ is the average pairwise sample covariance and $\hat{\gamma}$ is Frobenuis norm of the matrix $\hat{\Sigma}_{\text{sample}} - \hat{\Sigma}_{\text{target}}$. -->
+
+To evaluate the performance of the four portfolios, we compute portfolio returns in the out-of-sample period from January 2016 until December 2022. 
+<!-- The performance of the Fama French portfolio and the Parametric portfolio are based on the December 2015 portfolio weights. As such,  -->
+We keep the portfolio weights constant throughout the period and do not empirically analyze how rebalancing and transaction costs would have affected returns of the portfolios. 
+
+The annualized returns, risk, and Sharpe Ratios for the four strategies are reported in @tbl-performancereport.
+
+```{python}
+# Estimate the covariance matrix
+def cov1Para(Y,k=None):
+    """
+    This function estimates the covariance matrix for the stocks in the dataset
+    """
+    #Pre-Conditions: Y is a valid pd.dataframe and optional arg- k which can be
+    #    None, np.nan or int
+    #Post-Condition: Sigmahat dataframe is returned
+
+    # de-mean returns if required
+    N,p = Y.shape                      # sample size and matrix dimension
+   
+    #default setting
+    if k is None:
+        mean = Y.mean(axis=0)
+        Y = Y.sub(mean, axis=1)                               #demean
+        k = 1
+    #vars
+    n = N-k                                    # adjust effective sample size
+    
+    
+    #Cov df: sample covariance matrix
+    sample = pd.DataFrame(np.matmul(Y.T.to_numpy(),Y.to_numpy()))/n     
+    
+    # compute shrinkage target
+    diag = np.diag(sample.to_numpy())
+    meanvar= sum(diag)/len(diag)
+    target=meanvar*np.eye(p)
+    
+    # estimate the parameter that they call pi in Ledoit and Wolf (2003, JEF)
+    Y2 = pd.DataFrame(np.multiply(Y.to_numpy(),Y.to_numpy()))
+    sample2= pd.DataFrame(np.matmul(Y2.T.to_numpy(),Y2.to_numpy()))/n     
+    # sample covariance matrix of squared returns
+    piMat=pd.DataFrame(sample2.to_numpy()-np.multiply(sample.to_numpy(),sample.to_numpy()))
+    
+
+    pihat = sum(piMat.sum())
+    
+    # estimate the parameter that they call gamma in Ledoit and Wolf (2003, JEF)
+    gammahat = np.linalg.norm(sample.to_numpy()-target,ord = 'fro')**2
+    
+    # compute shrinkage intensity
+    kappahat=pihat/gammahat
+    shrinkage=max(0,min(1,kappahat/n))
+    
+    # compute shrinkage estimator
+    sigmahat=shrinkage*target+(1-shrinkage)*sample
+    
+    return sigmahat
+```
+
+```{python}
+# get a copy of already sliced data
+df_pf_train = deepcopy(df_train)
+df_pf_test = deepcopy(df_test)
+
+# out-of-sample returns 
+out_of_sample_r = df_pf_test.pivot(index='month',columns='permno',values='ret_excess').values
+# calculate sample variance-covariance
+out_of_sample_sigma = np.cov(out_of_sample_r, rowvar=False)
+```
+
+```{python}
+# in-sample returns
+df_pf_train_pivot = df_pf_train.pivot(index='month',columns='permno',values='ret_excess')
+# sample average and variance-covariance matrix
+mu_tilde = df_pf_train_pivot.mean(axis=0).values
+S_tilde = cov1Para(df_pf_train_pivot).values
+del df_pf_train_pivot
+```
+
+```{python}
+def calculate_min_variance_portfolio(Sigma):
+    """
+    This function calculates the minimum variance portfolio
+    """
+    Sigma_inv = np.linalg.inv(Sigma)
+    w_mvp = Sigma_inv @ iota    
+    w_mvp = w_mvp/np.sum(w_mvp) # normalize weights
+    return w_mvp
+
+def calculate_efficient_portfolio(Sigma, mu, gamma, return_multiple = 2):
+    """
+    This function calculates the efficient portfolio
+    """
+    Sigma_inv = np.linalg.inv(Sigma)
+    #----- minimum variance portfolio    
+    mvp_weights = calculate_min_variance_portfolio(Sigma)
+
+    #----- efficient frontier portfolio
+    mu_bar = return_multiple * mvp_weights.T @ mu
+    C = iota.T @ Sigma_inv @ iota
+    D = iota.T @ Sigma_inv @ mu
+    E = mu.T @ Sigma_inv @ mu
+    lambda_tilde = 2 * (mu_bar - D/C) / (E-D**2/C)
+    efp_weights = mvp_weights + lambda_tilde/2 * (Sigma_inv@mu - D* mvp_weights ) 
+    return efp_weights
+
+#### create the portfolios 
+# naive portfolio
+naive_portfolio = calculate_naive_portfolio(mu_tilde.shape[0])
+# efficient portfolio that delivers two times the expected return of mvp
+eff_portfolio = calculate_efficient_portfolio(S_tilde, mu_tilde, gamma)
+# already defined portfolio
+ex1_portfolio = deepcopy(weights_analytical)
+ex2_portfolio = deepcopy(w_pp)
+```
+
+```{python}
+def performance_calculations(weights):
+    """
+    This function calculates the performance of the portfolio
+        Args: 
+            weights: the weights of the portfolio
+        Returns:
+            A dictionary with the mean, standard deviation and sharpe ratio of the portfolio
+    """
+    annualize_factor = 12
+    annualize_return =  (out_of_sample_r @ weights).mean()*annualize_factor
+    annualized_std = np.sqrt(weights @ out_of_sample_sigma @ weights) * np.sqrt(annualize_factor)
+    ann_sharpe_ratio = annualize_return/annualized_std
+    return {
+        'Mean':annualize_return,
+        'Std. Dev.': annualized_std, 
+        'Sharpe Ratio' : ann_sharpe_ratio}
+
+# create a dataframe to store the performance calculations
+df_rep = pd.DataFrame({
+    'Naive': performance_calculations(naive_portfolio),
+    'Efficient': performance_calculations(eff_portfolio),
+    'FF': performance_calculations(ex1_portfolio),
+    'PP': performance_calculations(ex2_portfolio),
+}).T
+
+# create a dataframe to store the weights
+df_rep_weights = pd.DataFrame({
+    'Naive': naive_portfolio,
+    'Efficient': eff_portfolio,
+    'FF': ex1_portfolio,
+    'PP': ex2_portfolio,
+}
+).stack().reset_index().rename(columns={'level_0':'permno','level_1':'Portfolio',0:'Weight'})
+
+```
+
+```{python}
+# | output : true
+# | label : tbl-performancereport
+# | tbl-cap: "Annualized portfolio measures"
+
+# We multiply columns with 100 so (1=1%)
+df_rep['Mean'] = df_rep['Mean'].mul(100) 
+df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100) 
+# round it to two decimals
+df_rep.round(2)
+```
+
+The Naive portfolio offers the best risk-adjusted return (Sharpe Ratio of 0.65). The Fama French (FF) portfolio is likely to suffer from overfitting and imprecise coefficient estimates, which might explain its low Sharpe Ratio. This problem is almost escaped completely in the parametrized portfolio (PP) because of its reduced dimensionality.
+<!-- Our backtest strategy only uses the data that is available at the time of the portfolio creation. This means that we do not use any future data to estimate the optimal portfolios, and therefore no look-ahead bias is present in our backtest. 
+However, the Fama French portfolio comes with significant implementation shortfalls. This is due to the exponential increase in parameters as the number of stocks increase, requiring increasing computational power, and yielding noisy and unstable results. 
+Kan and Zhou (2007) show that estimation and model uncertainty has huge implications for the optimal portfolio choice. 
+As such, the estimation uncertainty of the Fama French portfolio is likely the reason for its poor performance in our study. -->
+
+Our back-testing strategy does not account for realistic factors such as rebalancing and associated transaction costs. If we test the performance of the four strategies with rebalancing and realistic transaction costs, we expect the FF portfolio to perform even worse, since it is likely to have a high turnover rate. In contrast, we expect transaction costs to have a relatively low effect on the performance of the PP portfolio consistent with the findings of Brandt et al. (2009). We expect the efficient portfolio to have a little higher turnover rate than the PP and the naive portfolio will likely prove even more optimal due to a low turnover rate.
+
+The portfolio weights for each strategy are presented in @fig-portfolioweights. The FF portfolio involves large variance in the weights. This is intuitive due to the estimation method that takes every firm's characteristics into account. The portfolio weights of the parametric portfolio are more balanced, but with one stock being shorted around 25% of the total portfolio value. The efficient portfolio also has relatively large variance in portfolio weights which is expected. 
+
+<!-- However, the dataset which we use to test is not true out-of-sample data and the results will be biased based on the chosen period of testing. For instance, should the drawdown of the market around the Great-Financial Crisis be in the testing period or not, and thus could certain portfolios be favored over others based on the testing period and selected stocks? Alternatively, we could generate a dataset from random drawings based on our estimated $\hat{\Sigma}$ and $\hat{\mu}$ and use this as out-of-sample data. This type of backtest would be more robust to the choice of testing period and stocks. However, it would be based on estimator of $\hat{\Sigma}$ and $\hat{\mu}$ which are not the true values and thus not resembling true data.  -->
+
+
+
+
+```{python}
+# | output : true
+# | label : fig-portfolioweights
+# | fig-cap: Portfolio Weights for different portfolios
+
+# four plots with the weights of all portfolios
+(
+    ggplot(
+        df_rep_weights, 
+        aes(x='permno', y='Weight')
+        ) + 
+    geom_bar(
+        stat='identity', 
+        fill='skyblue') + 
+    facet_wrap(
+        'Portfolio',
+        scales='free') +
+    labs(
+        x='Ticker', 
+        y='Weight') +
+    scale_y_continuous(
+        labels=percent_format()
+        ) +
+    theme_minimal(
+
+    ) + 
+    theme(
+          axis_text_x=element_blank(),
+          axis_ticks_major_x=element_blank(),
+          figure_size=(7,3), 
+          )
+)
+
+```
