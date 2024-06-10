@@ -21,33 +21,20 @@ jupyter: python3
 
 # Introduction
 
-Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
-
-# Exercise 1 and 2:
-
 ```{python}
 import pandas as pd
 import numpy as np
 import sqlite3
 import statsmodels.api as sm
-import tabulate
 
 from plotnine import *
 from mizani.formatters import percent_format
 from mizani.colors.brewer.sequential import Blues as Blues
-from regtabletotext import prettify_result
 
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import (
-  train_test_split, GridSearchCV, TimeSeriesSplit, cross_val_score
-)
-import os
-```
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 
-```{python}
 #Connecting to the database
 tidy_finance = sqlite3.connect(
     database=f"../../data/tidy_finance_python.sqlite"
@@ -55,18 +42,21 @@ tidy_finance = sqlite3.connect(
 
 #Reading in crsp_monthly and factors_ff3_monthly
 crsp_monthly = (pd.read_sql_query(
-    sql="SELECT * FROM crsp_monthly",
+    sql="SELECT permno, month, ret, ret_excess, mktcap, mktcap_lag, exchange FROM crsp_monthly",
     con=tidy_finance,
     parse_dates={"month"})
 )
 
 factors_ff3_monthly = pd.read_sql_query(
-  sql="SELECT month, mkt_excess FROM factors_ff3_monthly",
+  sql="SELECT month, mkt_excess FROM factors_ff3_monthly order by month",
   con=tidy_finance,
   parse_dates={"month"}
 )
 ```
 
+Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
+
+# Exercise 1 and 2:
 We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
 
 We do not expect significant differences between computing momentum as the relative change in prices compared to the relative change in market capitalization. In this assignment, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. Such events affect stock prices without affecting returns. However, when using the market capitalization, events such as dividend payouts, decrease market capitalization without affecting returns. Therefore, there are problems with both types of calculations. Lucklily, both the stock price and market capitalization has been adjusted accordingly in the CRSP dataset. Therefore, we should not face any problems by calculating momentum with either stocks prices or market capitalization.
@@ -90,31 +80,32 @@ data_for_sorts = (crsp_monthly
 data_for_sorts['Mom_12'] = 100 * (data_for_sorts['mktcap_lag'] - data_for_sorts['mktcap_lag_12']) / data_for_sorts['mktcap_lag_12']
 ```
 
-We present summary statistics of our dataset in @tbl-summary.
+We present summary statistics of our dataset in @tbl-summary. The mean of 12-Month momentum is around $20\%$ but the distribution has long tails. Likewise, we see that market cap has a long right tail of its distribution. 
 
 ```{python}
 #| output: true
 #| label: tbl-summary
 #| tbl-cap: Summary statistics of the dataset
 
-# Summarizing the data for sorts with mean, std, min, 5%, 50% 95% and max
-# List of variables to exclude
-exclude_vars = ['month', 'permno']
-
-# Filter out the excluded variables and displaying excess return in percentage terms
-data_for_sorts_filtered = data_for_sorts.drop(columns=exclude_vars)
-
-# Generate the summary statistics
-data_for_sorts_summary = (
-    data_for_sorts_filtered
-    .describe(percentiles=[0.05, 0.5, 0.95])
-    .round(2)
+# Generate the summary statistics: count, mean, std, min, 50%, and max
+(
+    data_for_sorts[['ret','ret_excess', 'Mom_12', 'mktcap']]
+    .assign(
+        ret=lambda x: x['ret']*100,
+        ret_excess=lambda x: x['ret_excess']*100,
+    )
+    .rename({'ret': 'Return', 'ret_excess': 'Excess Return', 'mktcap': 'Market Cap', 'Mom_12': '12-Month Momentum'}, axis=1)
+    .describe(percentiles=[])
     .transpose()
+    .map(lambda x: "{:,.2f}".format(x)) # Format the numbers with 2 decimal places
+    .assign(
+        count=lambda x: x['count'].apply(lambda val: val.replace(".00", "")), # Remove the decimal places for count
+        max=lambda x: x['max'].apply(lambda val: val.split(".")[0]), # Remove the decimal places for max
+    )
+    .rename(columns={'count': 'Count', 'mean': 'Mean', 'std': 'Std', 'min': 'Min', '50%': 'Median', 'max': 'Max'})
 )
 
-data_for_sorts_summary
 ```
-Where "ret_excess_p" is the monthly return above the risk free rate (0.01=1%), the "mktcap" variables are in USD millions, and "Mom_12" is the 12-month momentum in percentage terms (1=1%).
 
 # Exercise 3:
 
@@ -124,57 +115,43 @@ Where "ret_excess_p" is the monthly return above the risk free rate (0.01=1%), t
 # Creating the decile groups for the 12-month momentum
 quantile_func = lambda data: pd.qcut(data['Mom_12'], q=10, labels=False) + 1
 quantiles = data_for_sorts.groupby('month').apply(quantile_func).reset_index().drop(columns='month').set_index('level_1').rename(columns={'Mom_12': 'Mom_12_decile'})
-data_for_sorts = data_for_sorts.merge(quantiles, left_index=True, right_index=True)
 
-# Merging the data with the factors_ff3_monthly dataset
-data_for_sorts = data_for_sorts.merge(
-    factors_ff3_monthly, how="inner", on="month"
-)
-
-#Sorting the data by decile and month
-sorted_data = data_for_sorts.sort_values(
-    by=['Mom_12_decile', 'month'])
-
-#Bullet 2
-#Calculating the equal-weighted average values of Mom_12 and mc for each of the ten portfolios
-average_return = (
-    sorted_data
-    .groupby(['Mom_12_decile'])
-    .apply(lambda x: pd.Series({
-        'Average_Mom_12': np.mean(x['Mom_12']),
-        'Average_mktcap': np.mean(x['mktcap'])
-    }))
-    .reset_index()
-)
-# Specifiying the headers for the table, which we will use later to create table 2.
-headers = {'Mom_12_decile':"Decile",
-    'Average_Mom_12':"Average mom",
-    'Average_mktcap':"Average mktcap",
-}
-average_return.rename(columns=headers,inplace=True)
-
-for col in list(headers.values()):
-  average_return[col] = average_return[col].astype(float)
+sorted_data = (data_for_sorts
+                  .merge(quantiles, left_index=True, right_index=True) # Merge with the deciles
+                  .merge(factors_ff3_monthly, how="left", on="month") # Merge with the factors
+                  .sort_values(by=['Mom_12_decile', 'month']) # Sort by decile and month
+                  )
 ```
 
-For each month, we divide the companies into 10 groups (deciles) of equal size based on their 12 month momentum. The first decile contains the companies with the lowest 12 month momentum and the tenth decile contains the companies with the highest 12 month momentum. 
+We will based on the described data analyze the performance of the momentum strategy. This is done by examning the performance of portfolios created based on momentum. Specifally, we compute monthly portfolio breakpoints using 12-month momentum ($mom^{12}_{i,t}$) as the sorting variable for each month $t$. Subsequently, we divide the companies into ten deciles based on their 12-month momentum. Specifically, the first decile encompasses companies with the lowest 12-month momentum, while the tenth decile comprises those with the highest 12-month momentum. This method ensures that each month's portfolio breakpoints accurately reflect the momentum distribution across all stocks in the sample, facilitating effective portfolio stratification and analysis.
 
-We report the average market cap and 12-month momentum for each decile portfolio in @tbl-alphasacross. Here, we equal-weight the weights of the stocks in the portfolios. Unsurprisingly, the table shows that the average market momentum increases with the momentum decile, but also that the average market capitalization is increasing in the momentum decile until the 7th decile.
+To create portfolios, we start by equal-weighting the stocks in each decile. The average market cap and 12-month momentum for each decile portfolio is reported in @tbl-alphasacross. Unsurprisingly, the table shows that the average market momentum increases with the momentum decile, but also that the average market capitalization is increasing in the momentum decile until the 7th decile.
 
-Based on a value-weighting, we calculate the average excess return for the ten momentum-sorted portfolios which is reported alongside the portfolio characteristics in @tbl-alphasacross.
+Now instead of creating equal-weighted portfolio, we create value-weighted portfolio. The weights are then determined by a stock's relative size to the other stock within the decile. The analysis continues with the value_weighted portfolios. For each decile-portfolio, we calculate the average excess return for the ten decile which is reported alongside the portfolio characteristics in @tbl-alphasacross.
+
 ```{python}
 # Computing the value weighted excess returns for each of the ten portfolios
-Vw_excess_returns = (sorted_data.groupby(["Mom_12_decile", "month"])
-  .apply(lambda x: x.assign(
-      ret=np.average(x["ret_excess"], weights=x["mktcap_lag"])
+Vw_excess_returns = pd.merge(
+    sorted_data.drop(columns=['ret']), # Dropping the return column
+    sorted_data.groupby(["Mom_12_decile", "month"]).apply(
+        lambda x: np.average(x["ret_excess"], weights=x["mktcap_lag"])
+    ).rename("ret"),
+    left_on=["Mom_12_decile", "month"],
+    right_index=True,
+    how="left",
     )
-  )).reset_index(drop=True)
+
+### Less efficient way of computing the value weighted excess returns
+# Vw_excess_returns = (sorted_data.groupby(["Mom_12_decile", "month"])
+#   .apply(lambda x: x.assign(
+#       ret=np.average(x["ret_excess"], weights=x["mktcap_lag"])
+#     )
+#   )).reset_index(drop=True)
+
 ```
 
 ```{python}
-#| output: true
-# Calculating the CAPM alpha for each of the ten portfolios
-# Defining the linear regression function
+##### Calculating the CAPM alpha for each of the ten portfolios
 def lin_reg(x,y):
     """
     Function that runs a linear regression of y on x
@@ -193,38 +170,13 @@ def lin_reg(x,y):
 
 # Running the CAPM regression for each of the ten portfolios
 CAPM_alphas = (
-    Vw_excess_returns.groupby(["Mom_12_decile"])
+    Vw_excess_returns
+    .groupby("Mom_12_decile")
     .apply(
-        lambda x: lin_reg(x["mkt_excess"], x["ret"])
+        lambda x: pd.Series(lin_reg(x["mkt_excess"], x["ret"]),index=["Alpha", "t-statistic", "p-value", "std_err"])
     )
     .reset_index()
-)
-# unfolding the tuples into columns
-CAPM_alphas['Alpha'] = [x[0] for x in CAPM_alphas[0]]
-CAPM_alphas['t-statistic'] = [x[1] for x in CAPM_alphas[0]]
-CAPM_alphas['p-value'] = [x[2] for x in CAPM_alphas[0]]
-CAPM_alphas['std_err'] = [x[3] for x in CAPM_alphas[0]]
-CAPM_alphas.drop(columns=[0], inplace=True)
-
-
-# Merging the calculations to one dataset to present it in a table
-Alphas_excessret = pd.merge(
-  Vw_excess_returns.groupby("Mom_12_decile")['ret'].mean().reset_index(),
-  CAPM_alphas, 
-  how="left", 
-  on="Mom_12_decile"
-)
-
-# Specifiying the headers for the table
-headers_v2 = {'Mom_12_decile':"Decile",
-    'ret':"Excess Return",
-}
-# Renaming the headers
-Alphas_excessret.rename(columns=headers_v2,inplace=True)
-
-# Putting headers in place
-for col in list(headers_v2.values()):
-  Alphas_excessret[col] = Alphas_excessret[col].astype(float)
+    )
 ```
 
 ```{python}
@@ -234,23 +186,40 @@ for col in list(headers_v2.values()):
 
 # Merge to include excess return in table
 merged = pd.merge(
-  average_return,
-  Alphas_excessret.drop(columns=['std_err', 'Alpha', 't-statistic', 'p-value']),
-  on='Decile',
-  how='outer'
+  # Equal weighted average of momentum and market cap
+  (sorted_data
+    .groupby(['Mom_12_decile'])
+    .apply(lambda x: pd.Series({
+        'Average_Mom_12': np.mean(x['Mom_12']),
+        'Average_mktcap': np.mean(x['mktcap'])
+    }))
+    .reset_index()), 
+  # Value weighted average of excess return
+  (Vw_excess_returns
+   .groupby("Mom_12_decile")['ret']
+   .mean()
+   .reset_index()),
+  on='Mom_12_decile',
+  how='outer' # anything goes
   )
-  
-# Specifying decimals before printing the table
-formatted_dfAgg_v2 = merged.style.format({
-    'Decile': '{:.0f}',
-    'Average mom': '{:,.2f}',
-    'Average mktcap' : '{:,.0f}',
-    'Excess Return': '{:.4f}',
-    'na_rep': "" 
-})
-# hide index
-formatted_dfAgg_v2.hide()
-formatted_dfAgg_v2
+(
+    merged
+    .assign(
+        Mom_12_decile=lambda x: x['Mom_12_decile'].map(lambda val: f"{val:.0f}"),
+        ret = lambda x: x['ret'].map(lambda val: f"{val:,.4f}"),
+        Average_Mom_12 = lambda x: x['Average_Mom_12'].map(lambda val: f"{val:,.2f}"),
+        Average_mktcap = lambda x: x['Average_mktcap'].map(lambda val: f"{val:,.0f}"),
+        )
+    .rename(columns={
+        'Mom_12_decile':'Decile',
+        'Average_Mom_12': 'Average momentum',
+        'Average_mktcap': 'Average market cap',
+        'ret':'Excess Return'}, 
+        )
+    .set_index('Decile')
+)
+
+
 ```
 
 Using the value-weighted portfolios, we estimate alpha of each portfolio with OLS utilizing the CAPM equation: 
@@ -263,11 +232,11 @@ We report the alphas and their corresponding 95% confidence intervals in @fig-ca
 #| fig-cap: CAPM alphas of momentum-sorted portfolios
 
 # Calculate the 5% con
-Alphas_excessret['CI_lower'] = (Alphas_excessret['Alpha'] - 1.96 * Alphas_excessret['std_err'])
-Alphas_excessret['CI_upper'] = (Alphas_excessret['Alpha'] + 1.96 * Alphas_excessret['std_err'])
+CAPM_alphas['CI_lower'] = (CAPM_alphas['Alpha'] - 1.96 * CAPM_alphas['std_err'])
+CAPM_alphas['CI_upper'] = (CAPM_alphas['Alpha'] + 1.96 * CAPM_alphas['std_err'])
 # Plotting the alphas on the momentum portfolios
 plot_momentum_portfolios_summary = (
-  ggplot(Alphas_excessret, 
+  ggplot(CAPM_alphas.rename(columns={'Mom_12_decile': 'Decile'}), 
          aes(x="Decile", y="Alpha", fill="Decile")) +
   geom_bar(stat="identity") +
   geom_errorbar( 
@@ -289,7 +258,7 @@ where $r_{p,t}$ is the return of the portfolio, and $r_{m,i}$ is the return of t
 
 ```{python}
 # Naming 1 decile portfolio as low and 10 decile portfolio as high
-Vw_excess_returns['portfolio'] = np.where(Vw_excess_returns["Mom_12_decile"]==1,'low',np.where(Vw_excess_returns["Mom_12_decile"]==10,'high','neutral'))
+Vw_excess_returns['portfolio'] = Vw_excess_returns["Mom_12_decile"].map({1: "low", 10: "high"})
 
 # Pivoting the data to get the long-short momentum portfolio
 mom_ls = (Vw_excess_returns
@@ -311,6 +280,7 @@ model_fit = (sm.OLS.from_formula(
 #| output: true
 #| label: tbl-performance
 #| tbl-cap: Performance of the momentum strategy
+
 # Format the DataFrame style
 output = (pd.DataFrame(index=['alpha','beta'],
                         data=({
@@ -324,7 +294,10 @@ output.round(3)
 
 We reject the null hypothesis that the return, $\alpha$, of the momentum strategy is 0. This result aligns with the result in Jegadeesh and Titman (1993) that suggest it is possible to obtain a positive $\alpha$ with the momentum strategy. However, our results deviate from the CAPM, which states that arbitrage strategies are not possible. Furthermore, our results show a significant negative $\beta$, which means the momentum (long/short) portfolio is negatively correlated with the market. This type of portfolio can be used to reduce the market risk of other investments with positive betas.
 
+
 Next, we calculate the excess return of the (long/short) portfolio described above, and for a portfolio (high) that only goes long in the stocks of the 10th decile and a portfolio (low) that exclusively goes long in the stocks of the 1st decile. The yearly returns for the three portfolios are plotted in @fig-annualreturns
+
+
 ```{python}
 #| output: true
 #| label: fig-annualreturns
@@ -357,42 +330,24 @@ plot_momentum_longshort_year = (
 plot_momentum_longshort_year.draw()
 ```
 
-The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which supports the argument for a momentum portfolio. Interestingly, the momentum (long/short) portfolio performs poorly in 2009, the year after the financial crisis. This is due to the stellar performance of low momentum stocks bouncing back from the low point in 2008.
+<!-- The graphs generally show an expected pattern with both positive and negative returns. All portfolios exhibit autocorrelation in the returns, which supports the argument for a momentum portfolio. Interestingly, the momentum (long/short) portfolio performs poorly in 2009, the year after the financial crisis. This is due to the stellar performance of low momentum stocks bouncing back from the low point in 2008. -->
 
 # Exercise 4
 
-We aim to estimate a model where a stock's excess return is linearly dependent on its own 60 previous lags. The regression model is as follows:
-
-$$r_{i,t+1} = \sum_{k=1}^{60} b_k r_{i,t-k} + \sum_{k=1}^{60} c_k r_{i,t-k}^2$$
-
-The squared term represents the magnitude of past returns, irrespective of their direction (positive or negative).Therefore, the coefficient $c_k$ captures how much the volatility (or magnitude of returns) from k periods ago affects the current period's excess return.
-
-To estimate the coefficients of this model, we will use ridge regression, a regularized version of OLS regression. Ridge regression helps reduce the variance of the estimates by adding a penalty term to the OLS regression.This penalty term is the sum of the squared coefficients multiplied by a constant, $\lambda$, a hyperparameter that must be chosen. The optimal value of $\lambda$ is found through cross-validation. The regression coefficient has a closed-form solution:
-
-$$\hat{\beta} = (X^TX + \lambda I)^{-1}X^Ty$$
-
-Here $\hat{\beta}$ represents the estimated coefficients, $X$ is the matrix of predictors, $y$ is the vector of the dependent variable, and $I$ is the identity matrix.
-
-First, we clean the dataset by removing the smallest stocks, specifically those with the lowest 20% market capitalization.
-
 ```{python}
 # slice so we only use stocks that are listed on NYSE
-ml_crps = crsp_monthly.loc[crsp_monthly['exchange']=='NYSE']
-```
+ml_crps = crsp_monthly.loc[crsp_monthly['exchange']=='NYSE',['permno','month','ret_excess','mktcap']]
 
-```{python}
 # set the percentile to 20%
 cut_off_quantile = 0.20
 # create a series with the cut_off_quantile for each month
 cut_off = ml_crps.groupby('month')['mktcap'].quantile(cut_off_quantile)
 # Filter out the stocks with market capitalization below the 5th percentile
 ml_crps = ml_crps[ml_crps['mktcap'] >= ml_crps['month'].map(cut_off)]
-```
 
-```{python}
 # Generate lagged columns efficiently
 lags = range(2, 62)
-lagged_data = {f'ret_lag_{i}': ml_crps.groupby('permno')['ret'].shift(i) for i in lags}
+lagged_data = {f'ret_lag_{i}': ml_crps.groupby('permno')['ret_excess'].shift(i) for i in lags}
 
 # Create DataFrame from lagged columns
 r_df = pd.DataFrame(data = lagged_data)
@@ -411,61 +366,42 @@ mask = ml_crps_lags.notna().all(axis=1)
 ml_crps_lags = ml_crps_lags[mask.values]
 
 # Set the index
-ml_crps_lags.sort_values(['permno', 'month'], inplace=True)
+ml_crps_lags.sort_values(['month','permno'], inplace=True)
 ml_crps_lags.set_index(['permno', 'month'], inplace=True)
-```
 
-We then demean the dependent variable $r_{i,t+1}$ by month, subtracting the mean from the series, ensuring the mean excess return in each month is zero. Additionally, we standardize the lagged excess returns by month, dividing each by the standard deviation, making the standard deviation across firms one.
-
-```{python}
 lag_cols = list(lagged_data.keys())
-squared_lag_cols = list(lagged_data.keys())
+squared_lag_cols = list(squared_lagged_data.keys())
 
 # create the exogenous and endogenous variables
 exog = ml_crps_lags[lag_cols+squared_lag_cols]
-endog = ml_crps_lags.get('ret')
+endog = ml_crps_lags.get('ret_excess')
 
 # Standardize the data - dependent variable has a mean of 0 and the predictors a standard deviation of 1
 endog = endog - endog.groupby('month').mean()
 exog = (exog-exog.groupby('month').mean()) / exog.groupby('month').std()
 
-train_endog = endog.loc[endog.index.get_level_values('month') < '2000-01-01']
-train_exog = exog.loc[exog.index.get_level_values('month') < '2000-01-01']
-```
-
-With the cleaned and transformed dataset, we proceed to choose the hyperparameter, $\lambda$, which minimizes the estimated mean squared prediction error (MSPE):
-$$\lambda^{opt} = \arg\:\min_{\lambda} MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (\hat{y}_t(\lambda) - y_t)^2 \right)$$
-
-where $\hat{y}_t(\lambda)$ is the predicted value of the dependent variable at time $t$ for a given $\lambda$ and $y_t$ is the true value of the dependent variable at time $t$.
-
-We divide the dataset into a training set for hyperparameter selection, using cross-validation to average the MSPE across K data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected.
-
-```{python}
-initial_years = 5
-assessment_months = 48*4
-n_splits = 100
-length_of_year = 12
-
-data_folds = TimeSeriesSplit(
-  n_splits=n_splits, 
-  test_size=assessment_months, 
-  max_train_size=initial_years * length_of_year
-)
-lambdas = np.logspace(-4, 4, 40) # evenly spaced on a logscale
-```
-
-
-We tune the model over a grid of $\lambda$ that is evenly spread on a logscale from `{python} lambdas.min().round(2)` to `{python} lambdas.max().round(2)` with 100 datafolds. 
-
-```{python}
-
-lambdas = np.insert(lambdas,0,0) #insert zero
+# create a grid of 40 values between 10^-4 and 10^4
+lambdas = np.logspace(-4, 4, 40) 
 params = {
   "alpha": lambdas,
 }
+# set TimeSeriesSplit parameters
+datafolds = 10 # Number of splits/folds for cross-validation
+test_size = 4*12 # Set the size of the test set
+max_train_size = 5*12 # Set the maximum size of the training set
+
+data_folds = TimeSeriesSplit(
+  n_splits=datafolds, 
+  test_size= test_size, 
+  max_train_size= max_train_size 
+)
+
 
 # create pipeline
-ridge_pipeline = Ridge(fit_intercept=False,max_iter=5000)
+ridge_pipeline = Ridge(
+  fit_intercept=False, # no intercept due to demeaning of variables
+  max_iter=5000 # max iterations
+  )
 
 finder = GridSearchCV(
   estimator=ridge_pipeline,
@@ -475,18 +411,46 @@ finder = GridSearchCV(
   verbose=1, # Print messages choose 1 through 3 to get more information
   n_jobs=-1, # Use all cores
 )
+```
 
+We aim to estimate a model to investigate how a stock's excess return at time $t$ is influenced by its own past returns and the magnitudes of those returns. The model is specified as
+$$r_{i,t} = \sum_{k=2}^{61} b_k r_{i,t-k} + \sum_{k=2}^{61} c_k r_{i,t-k}^2$$
+
+The coefficients, $b_k$ represent the linear relationship between the excess return at time $t$ and the excess return from $k$ periods ago. As such, the a positive $b_k$ suggests that higher returns $k$ periods ago are associated with higher returns at time $t$.
+The squared term represents the magnitude of past returns, irrespective of their direction (positive or negative). Therefore, the coefficient $c_k$ captures how much the volatility from $k$ periods ago affects the current period's excess return.
+
+We will estimate the parameters using the crsp dataset. We clean the dataset by removing the smallest stocks, specifically those with the lowest 20% market capitalization. Further, we demean the dependent variable $r_{i,t}$ by month, subtracting the mean from the series, ensuring the mean excess return in each month is zero. Additionally, we demean and standardize all lagged returns by month, dividing each by the standard deviation, making the mean equal to zero and the standard deviation across firms one.
+
+
+To estimate the coefficients of this model, we will use ridge regression, a regularized version of OLS regression. Ridge regression helps reduce the variance of the estimates by adding a penalty term to the OLS regression. This penalty term is the sum of the squared coefficients multiplied by a constant, $\lambda$, a hyperparameter that must be chosen. The optimal value of $\lambda$ is found through cross-validation. The regression coefficient has a closed-form solution:
+
+$$\hat{\beta} = (X^TX + \lambda I)^{-1}X^TY$$
+
+Here $\hat{\beta}$ represents the estimated coefficients, $X$ is the matrix of predictors, $Y$ is the vector of the dependent variable, $I$ is the identity matrix, and $\lambda$ is hyperparameter. The value of $\lambda$ will be chosen to minimize the estimated mean squared prediction error (MSPE):
+$$\lambda^{opt} = \arg\:\min_{\lambda} MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (\hat{r}_{i,t}(\lambda) - r_{i,t})^2 \right)$$
+
+where $\hat{y}_t(\lambda)$ is the predicted value of the dependent variable at time $t$ for a given $\lambda$ and $y_t$ is the true value of the dependent variable at time $t$.
+To select the optimal hyperparameter $\lambda$, we employ a suitable cross-validation scheme. Specifically, we divide the dataset into $K$ folds and perform cross-validation, calculating the MSPE for each fold over a range of $\lambda$ values. The cross-validation procedure averages the MSPE across all $K$ folds for each $\lambda$. The hyperparameter that results in the lowest average MSPE is then selected as the optimal $λ$. This approach ensures that the selected 
+$\lambda$ generalizes well to unseen data, balancing model complexity and predictive accuracy.
+We divide the dataset into a training set for hyperparameter selection, using cross-validation to average the MSPE across $K$ data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected. Choosing $K$ involves balancing the computational burden with the desire for accurate estimates of model performance. \
+We tune the model over a grid of $\lambda$ that is evenly spread on a logscale from `{python} lambdas.min().round(2)` to `{python} lambdas.max().round(2)` with `{python} datafolds` datafolds. 
+
+```{python}
+# fit the model
 finder.fit(
-  train_exog, 
-  train_endog
+  X=exog, 
+  y=endog
 )
 
 # store the best estimator
 best_est = finder.best_estimator_
 
 # store optimal penaly parameter
-opt_lambda = best_est.get_params()['alpha']
+opt_lambda = finder.best_params_['alpha']
+opt_score = -finder.best_score_
 ```
+
+After tuning, we set $\lambda$ to the optimal value (`{python} opt_lambda.round(3)`) found, and estimate the model on the remaining dataset:
 
 ```{python}
 #| output: true
@@ -494,11 +458,10 @@ opt_lambda = best_est.get_params()['alpha']
 #| fig-cap: Root mean squared error for different penalty
 
 plot_df = pd.DataFrame({'RMSE':-finder.cv_results_['mean_test_score'],'lambda':lambdas})
-
-opt_rmse = plot_df.loc[plot_df['lambda']==opt_lambda,'RMSE'].iloc[0]
-
 plot_df['Sample'] = 'Full'
-plot_df = pd.concat([plot_df,plot_df.loc[plot_df['RMSE']<0.7].assign(Sample='Zoom')])
+
+index = plot_df.loc[plot_df['lambda']==opt_lambda].index[0]
+plot_df = pd.concat([plot_df,plot_df.iloc[index-3:index+4].assign(Sample='Zoom')])
 
 (
   ggplot(plot_df, 
@@ -509,54 +472,61 @@ plot_df = pd.concat([plot_df,plot_df.loc[plot_df['RMSE']<0.7].assign(Sample='Zoo
   scale_y_continuous() +
   theme(legend_position="none",figure_size=(12,6)) +
   scale_x_log10() +
-  annotate("point", x = opt_lambda, y = opt_rmse, colour = "blue") +
+  annotate("point", x = opt_lambda, y = opt_score, colour = "blue") +
+  theme(figure_size=(7,3)) +
   theme_minimal()
   ).draw()
-
 ```
 
-After tuning, we set $\lambda$ to the optimal value (`{python} best_est.get_params()['alpha'].round(3)`) found, and estimate the model on the remaining dataset:
+<!-- We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns. -->
+
+In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
+We notice a distinct pattern in the estimated coefficients:
+
+- For $k<6$, the coefficient,$\hat{b}_k$, is negative, indicating a negative relationship between past excess returns and future returns. The $\hat{c_k}$ are relatively large. Indicating a short term relationship between volatility (large move in either direction) and excess return in the current period. Any pattern in $\hat{c_k}$ is vanished.
+
+- However, from $6 < k \leq 12$. For $k>12$, there is a shift, with six consecutive positive coefficients, suggesting a reversal in the trend towards positive relationships.
+
+- Beyond $12<k$, the majority of coefficients are negative, albeit with a few exceptions. Notably, all $\hat{b}_k$ values are positive for $k\in\{12,24,36,48,60\}$, hinting at a periodicity in the data.
+
+Interpreting these coefficient estimates, we find indications of mean reversion effects in the short run, particularly for periods under 6 months, with the effect peaking at $k=2$ and diminishing thereafter. \
+In the medium run (6-12 months), there's evidence suggesting a momentum strategy. Positive excess returns experienced 6-12 months ago seem to influence the stock's performance in period $t$
 
 ```{python}
 # run the best estimator on the rest of the data
-best_est_fit = best_est.fit(train_exog, train_endog)
-coef = best_est_fit.coef_
-```
+names = best_est.feature_names_in_
+coefficients = best_est.coef_
 
-We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns.
+# Create a dataframe with the coefficients
+a = pd.DataFrame({'feature':names, 'value':coefficients})
 
-In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). It is noted that coefficient in front of squared terms seem to be greater in absolute value than those in front of $r_{i,t−k}$. 
+# get the last int from feature name
+a['lag'] = a['feature'].str.extract('(\d+)').astype(int)
 
-The coefficients for the squared terms are all positive and relatively large up to the twelfth lag, after which they turn negative and mostly remain negative for the entire lag structure. Additionally, we notice significant coefficients for lags $k\in(12,24,48)$. This suggests that the excess returns exhibit some periodicity, where the squared returns from the same month in previous years strongly influence the current excess return.
-
-The pattern for the coefficients of the non-squared lags of excess return is not as clear as for the squared terms. The coefficients are relatively small and, for lags up to a year, they are both positive and negative. There seems to be no evidence here for a momentum strategy. However, we do notice some clustering of high positive coefficients for lags of excess return between 1 to 2 years.
-
-Based on this ridge-regression analysis, no horizon seem to justify a momentum strategy. 
-```{python}
+# get which coefficient 
+a['coeff'] = np.where(a['feature'].str.contains('ret_sq'), 'r_sq', 'r')
+a['coeff'] = a['coeff'].map({'r_sq':f'$c_k$','r':f'$b_k$'})
+# determine the color of the coefficient based on the absolute value
 cut_func = lambda d: pd.qcut(np.abs(d),q=5,labels=['very low','low','medium','high','very high'])
-plot_r_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[len(coef)//2:]}).assign(model='r')
-plot_r_df = plot_r_df.assign(color=cut_func(plot_r_df['value']))
-
-plot_rsq_df = pd.DataFrame({'lag':range(2,len(coef)//2+2),'value':coef[:len(coef)//2]}).assign(model='r_sq')
-plot_rsq_df = plot_rsq_df.assign(color=cut_func(plot_rsq_df['value']))
-coef_df = pd.concat([plot_r_df, plot_rsq_df])
+a['Abs. Value'] = a.groupby('coeff')['value'].apply(cut_func).values
 
 ```
 
-<!-- ```{python}
+```{python}
 #| output: true
 #| label: fig-coeffient_plot
 
 (
-  ggplot(coef_df, 
-         aes(x="lag", y="value",fill='color')) + 
+  ggplot(a, 
+         aes(x="lag", y="value",fill='Abs. Value')) + 
   geom_col()  +
-  facet_wrap("model") +
-  labs(x="Lag", y="Coefficient",) +
-  scale_y_continuous(labels=percent_format()) +
+  facet_wrap("coeff",) +
+  labs(x=f"$k$ (lags)", y="Coefficient estimate") +
+  scale_y_continuous() +
   theme(legend_position="none") + 
   theme_minimal() +
   scale_fill_manual(values=Blues.get_hex_swatch(3)+['#217dbf','#0a324f'])
   )
+```
 
-``` -->
+
