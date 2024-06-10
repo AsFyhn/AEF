@@ -11,12 +11,12 @@ format:
     number-sections: False
     colorlinks: true
     geometry:
-      - top=20mm
-      - left=20mm
+      - top=15mm
+      - left=15mm
       - bottom=20mm
-      - right=20mm
+      - right=15mm
     cite-method: natbib
-    fontsize: 12pt
+    fontsize: 11pt
 jupyter: python3
 ---
 ```{python}
@@ -37,7 +37,7 @@ from scipy.optimize import minimize
 
 
 ```{python}
-#Load data (note this path might need to be adjusted according to the individual folder structure)
+#Load data
 df = pd.read_csv(r"../../data/data-exam-2024.csv") 
 # slice data set into training and test
 df_train = df.loc[df['month']<='2015-12-31']
@@ -52,21 +52,16 @@ T_test = df_test['month'].nunique()
 gamma = 4
 ```
 
-# Problem 1
+**Exercise 1** 
 
-We split the dataset into two sets. One set with all observations before 2016 and another set with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations. 
-
-<!-- We regress excess return, $r_{i,t}$ for each firm $i$ on market excess return, $r_{m,t}$, factor returns of small-minus-big, $r_{smb,t}$, and high-minus-low book-value, $r_{hml,t}$.  
-
-$$r_{i,t} = \alpha_i + \beta_{i}^{m} r_{m,t} +  \beta_i^{smb} r_{smb,t} + \beta_i^{hml} r_{hml,t} + \epsilon_{i,t}$$
-
--->
+We split the dataset into two. One with all observations before 2016 and one with all observations after 2016. The first dataset will used throughout the study as a training dataset, and the second dataset will be used to evaluate the out-of-sample performance of the portfolios. 
+<!-- Both datasets contain information for the same `{python} N` companies. The training dataset has `{python} T` monthly observations for each company, and the performance evaluation dataset has `{python} T_test` monthly observations.  -->
 
 We estimate the parameters of $\mathbf{A}_i$ and $\mathbf{B}_i$ of the following regression model:
 $$
 \mathbf{r}_i = \mathbf{A}_i + \mathbf{F} \mathbf{B}_i + \mathbf{E}_i
 $$
-where $\mathbf{r}_i$ is the vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a vector with the intercept for firm $i$. $\mathbf{F}$ is a matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the vector of error terms for firm $i$ over time $t$.
+where $\mathbf{r}_i$ is the vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a vector representing the intercept for firm $i$. $\mathbf{F}$ is a matrix of the factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the vector of error terms for firm $i$ over time $t$.
 
 ```{python}
 # create a copy 
@@ -108,7 +103,7 @@ $$\hat{\mu}^{FF} = {\hat{\mathbf{A}}^{FF}} + {\bar{\mathbf{F}}^{FF}} {\hat{\math
 \hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FR} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}
 $$
 
-where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated.
+where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
 
 ```{python}
 # merge the estimated coeffcients to the original dataframe
@@ -166,10 +161,9 @@ In @tbl-coefficientdistribution, we report descriptive statistics on the estimat
 
 Based on model-implied expected excess return vector, and the model-implied covariance matrix, we create a portfolio where the weights are given by:
 $$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
-which has the analytical solution 
-$$\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$$
+which has the analytical solution $\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$
 
-We create a portfolio with the optimal weights using all available data in the training dataset. The weights are reported in @fig-portfolioweights and the out-of-sample performance is evaluated in Problem 3. 
+We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance is reported in Exercise 3. 
 
 ```{python}
 # find the inverse of the estimated variance-covariance matrix
@@ -197,17 +191,17 @@ opt_w = minimize(
 if not np.allclose(opt_w,weights_analytical): print("Check your calculations again")
 ```
 
-# Problem 2
+**Exercise 2** 
 
-The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. The intuition behind $\theta$ is that it captures the relationship between characteristics and expected returns, thereby tilting the portfolio towards stocks with desirable characteristics. We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns.
+The parameter vector $(\theta)$ represents the sensitivity of the portfolio weights to the stock characteristics $(x_{i,t})$. The intuition behind $\theta$ is that it captures the relationship between characteristics and expected returns, thereby tilting the portfolio towards stocks with desirable characteristics.
 <!-- 
-(Her fra can blive slettet hvis plads mangel:)  ((her til)) -->
+(Her fra can blive slettet hvis plads mangel:) We note that the weight on each characteristic applies across all stocks and through time. In that way, two stocks with similar characteristics will have the same portfolio weights regardless of historical returns, which implies the assumption that $x_{i,t}$ captures all characteristics that affect returns. ((her til)) -->
 
 Brandt et al. (2009) estimate $\theta$ by maximizing the average utility that would have been achieved, if the portfolio had been implemented over the sample period. Specifically, they solve the unconditional optimization problem with respect to $\theta$:
 
 $$\max_\theta \frac{1}{T} \sum_{t=0}^{T-1} u(r_{p,t+1})=\frac{1}{T} \sum_{t=0}^{T-1} u\left(\sum_{i=1}^{N_t} w_{i,t}^{PP} r_{i,t+1}\right)$$
 
-Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements when implementing the portfolio in the real world. However, direct weight parametrization offer less intuitive interpretations from an economical standpoint. The weight on each characteristic is constant through stocks and time which implies that e.g. the characteristic “book-to-market ratio” is equally important for the expected returns of a banking stock in 2008 and a tech stock in 2000. The two-step approach in Problem 1 offer more straightforward economic interpretations.
+Where they use CRRA utility throughout the paper. They parametrize the portfolio weights directly, which reduces dimensionality exponentially compared to the two-step procedure in Problem 1. As such, the compounding of errors that can occur in the two-step procedure are minimized, reducing problems with overfitting and high variance coefficient estimates. Furthermore, parametrizing portfolio weights, instead of the two-step procedure in Problem 1, reduces the computational requirements significantly when implementing the portfolio in the real world. However, direct weight parametrization offer less intuitive interpretations because the weight on each characteristic is constant through stocks and time. The two-step approach in Problem 1 offer more straightforward economic interpretations.
 
 To examine the performance of the parametric portfolio, we start by solving the following optimization problem:
 $$\hat{\theta}=\max_\theta E(R_{p,t})-\frac{\gamma}{2}Var(R_{p,t}),$$
@@ -276,20 +270,17 @@ theta_hat = results.x
 
 We estimate the coefficients to $\hat{\theta}=(\hat{\theta}_{Beta},\hat{\theta}_{Size},\hat{\theta}_{Bm})=(`{python} theta_hat[0].round(2)`,`{python} theta_hat[1].round(2)`,`{python} theta_hat[2].round(2)`)$. Our estimates show that the portfolio policy, relative to the naive portfolio, is biased towards low beta stocks, with a small market cap and a high book-to-market ratio. The characteristics are cross-sectionally standardized, and therefore the magnitudes can be compared. We see that market capitalization has the highest relative impact of the three characteristics on the portfolio policy. Small firms have been shown to outperform larger firms, and so the negative sign of $\hat{\theta}_{Size}$ makes sense. The negative sign of $\hat{\theta}_{Beta}$ aligns with the result in Frazzini & Pedersen (2014). The intuition is that liquidity constrained investors with low risk-aversion bid up high beta assets. Lastly, the positive sign on $\hat{\theta}_{Bm}$ is also aligned with the literature. The intuition is that firms with a higher fundamental value are favored.
 
-Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation 
-$$\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$$ 
-We present $w^{PP}_{i,t_{end}}$  in @fig-portfolioweights and evaluate the performance of the portfolio in Problem 3.
+Lastly, we calculate the portfolio policy weights in December 2015 $(t_{end})$. This is done by solving the equation $\omega^{PP}_{i,t_{end}}=\frac{1}{N}+\frac{1}{N}\hat{\theta}'x_{i,t_{end}}$. We present $w^{PP}_{i,t_{end}}$  in @fig-portfolioweights.
 
 ```{python}
 # calculate the portfolio weights based on the optimal theta
 w_pp = calc_pp_weight(theta_hat).iloc[-1,:].values
 ```
 
-# Problem 3
+**Exercise 3** 
 
 In this exercise we compare the portfolios in Problem 1 and 2 with the naive portfolio and the efficient portfolio. The efficient portfolio is calculated as the portfolio that delivers 2 times the expected return of minimum variance portfolio. In order to calculate the portfolio weights, we need an estimate of the expected returns, $\tilde{\mu}$, and the variance-covariance matrix, $\tilde{\Sigma}$. We estimate $\tilde{\mu}$ as the sample average of past returns, while using the Leidot-Wolf shrinkage estimator for $\tilde{\Sigma}$. It is calculated as: 
-$$\tilde{\Sigma} = \hat{\Sigma}^{LW} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}},$$ 
-where $\alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
+$\tilde{\Sigma} = \hat{\Sigma}^{LW} = \alpha \hat{\Sigma}_{\text{target}} + (1-\alpha) \hat{\Sigma}_{\text{sample}}$ where $\alpha$ is our linear shrinkage parameter, $\hat{\Sigma}_{\text{target}}$ is the target matrix and $\hat{\Sigma}_{\text{sample}}$ is the sample covariance matrix. 
 <!-- The target matrix is given by:
 $$
 \hat{\Sigma}_{\text{target}} = I_N (\frac{1}{N} \sum_{i=1}^N var(r_{i,t}))
@@ -461,13 +452,15 @@ df_rep['Std. Dev.'] = df_rep['Std. Dev.'].mul(100)
 df_rep.round(2)
 ```
 
-The Naive portfolio offers the best risk-adjusted return (Sharpe Ratio of 0.65). The Fama French (FF) portfolio is likely to suffer from overfitting and imprecise coefficient estimates, which might explain its low Sharpe Ratio. This problem is almost escaped completely in the parametrized portfolio (PP) because of its reduced dimensionality. However, both the FF, PP, and efficient portfolio might be biased because the dataset used for testing is not true out-of-sample data. This could skew the results based on the selected stocks or testing period. For example, the dataset only includes stocks with continuous trading history, which means it doesn't account for the risk of bankruptcy. As a result, we might overestimate $\hat{\theta}_{Size}$. To mitigate these pitfalls, we could generate a dataset from random drawings based on our estimated $\hat{\Sigma}$ and $\hat{\mu}$ and use this as out-of-sample data. However, it is important to note that this approach relies on estimations of $\hat{\Sigma}$ and $\hat{\mu}$, which might not accurately represent real data.
+The Naive portfolio offers the best risk-adjusted return (Sharpe Ratio of 0.65). The Fama French (FF) portfolio is likely to suffer from overfitting and imprecise coefficient estimates, which might explain its low Sharpe Ratio. This problem is almost escaped completely in the parametrized portfolio (PP) because of its reduced dimensionality.
 <!-- Our backtest strategy only uses the data that is available at the time of the portfolio creation. This means that we do not use any future data to estimate the optimal portfolios, and therefore no look-ahead bias is present in our backtest. 
 However, the Fama French portfolio comes with significant implementation shortfalls. This is due to the exponential increase in parameters as the number of stocks increase, requiring increasing computational power, and yielding noisy and unstable results. 
 Kan and Zhou (2007) show that estimation and model uncertainty has huge implications for the optimal portfolio choice. 
 As such, the estimation uncertainty of the Fama French portfolio is likely the reason for its poor performance in our study. -->
 
-Our back-testing strategy also does not account for realistic factors such as rebalancing and associated transaction costs. The real world performance of the four strategies would highly depend on transaction costs and frequency of rebalancing. With high transaction costs, we expect the FF portfolio to perform even worse, since it is likely to have a high turnover rate. However, the portfolio might also benefit from reblancing if transaction costs are low. In contrast, we expect high transaction costs to have a relatively low effect on the performance of the PP portfolio, consistent with the findings of Brandt et al. (2009). Lastly, the naive portfolio will likely prove even better with transaction costs due to a low turnover rate.
+Our back-testing strategy does not account for realistic factors such as rebalancing and associated transaction costs. If we test the performance of the four strategies with rebalancing and realistic transaction costs, we expect the FF portfolio to perform even worse, since it is likely to have a high turnover rate. In contrast, we expect transaction costs to have a relatively low effect on the performance of the PP portfolio consistent with the findings of Brandt et al. (2009). We expect the efficient portfolio to have a little higher turnover rate than the PP and the naive portfolio will likely prove even more optimal due to a low turnover rate.
+
+The portfolio weights for each strategy are presented in @fig-portfolioweights. The FF portfolio involves large variance in the weights. This is intuitive due to the estimation method that takes every firm's characteristics into account. The portfolio weights of the parametric portfolio are more balanced, but with one stock being shorted around 25% of the total portfolio value. The efficient portfolio also has relatively large variance in portfolio weights which is expected. 
 
 <!-- However, the dataset which we use to test is not true out-of-sample data and the results will be biased based on the chosen period of testing. For instance, should the drawdown of the market around the Great-Financial Crisis be in the testing period or not, and thus could certain portfolios be favored over others based on the testing period and selected stocks? Alternatively, we could generate a dataset from random drawings based on our estimated $\hat{\Sigma}$ and $\hat{\mu}$ and use this as out-of-sample data. This type of backtest would be more robust to the choice of testing period and stocks. However, it would be based on estimator of $\hat{\Sigma}$ and $\hat{\mu}$ which are not the true values and thus not resembling true data.  -->
 
@@ -508,4 +501,3 @@ Our back-testing strategy also does not account for realistic factors such as re
 )
 
 ```
-The portfolio weights for each strategy are presented in @fig-portfolioweights. The FF portfolio involves large variance in the weights. This is intuitive due to the estimation method that takes every firm's characteristics into account. The portfolio weights of the parametric portfolio are more balanced, but with one stock being shorted around 25% of the total portfolio value. The efficient portfolio also has relatively large variance in portfolio weights which is expected. 
