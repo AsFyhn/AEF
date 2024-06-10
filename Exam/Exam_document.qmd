@@ -66,7 +66,7 @@ We estimate the parameters of $\mathbf{A}_i$ and $\mathbf{B}_i$ of the following
 $$
 \mathbf{r}_i = \mathbf{A}_i + \mathbf{F} \mathbf{B}_i + \mathbf{E}_i
 $$
-where $\mathbf{r}_i$ is the $T \times 1$ vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a $T \times 1$ vector representing the intercept for firm $i$. $\mathbf{F}$ is the $T \times 3$ matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the $T \times 1$ vector of error terms for firm $i$ over time $t$.
+where $\mathbf{r}_i$ is the vector of excess returns for firm $i$ over time $t$. $\mathbf{A}_i$ is a vector with the intercept for firm $i$. $\mathbf{F}$ is a matrix of factor returns over time $t$, where each column represents the factor returns, $r_{m,t}, r_{m,t}, r_{m,t}$. $\mathbf{B}_i=[\beta_i^m, \beta_i^{smb}, \beta_i^{hml}]$ is the vector of betas for firm $i$. Lastly, $\mathbf{E}_i$ is the vector of error terms for firm $i$ over time $t$.
 
 ```{python}
 # create a copy 
@@ -108,7 +108,7 @@ $$\hat{\mu}^{FF} = {\hat{\mathbf{A}}^{FF}} + {\bar{\mathbf{F}}^{FF}} {\hat{\math
 \hat{\Sigma}^{FF} = \hat{\mathbf{B}}^{FF} \hat{\Sigma}^{FR} \hat{\mathbf{B}}^{'FF} + \Sigma_{\epsilon}
 $$
 
-where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated. Conversely, if their factor loadings differ, their returns will be less correlated. 
+where $\mathbf{\bar{F}}^{FF}$ represents the average of the factor returns over time, and $\hat{\Sigma}^{FR}$ is the covariance matrix of factor returns, and $\Sigma_{\epsilon}$ is the covariance matrix of the residuals. From the expression for $\hat{\Sigma}^{FF}$, we see that the correlation between the excess returns of two stocks depends on their factor loadings, $\mathbf{B}^{FF}$, and the correlations between the factors. If two stocks have similar factor loadings, their returns will be highly correlated.
 
 ```{python}
 # merge the estimated coeffcients to the original dataframe
