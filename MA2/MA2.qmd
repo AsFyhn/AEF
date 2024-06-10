@@ -1,6 +1,6 @@
 ---
 title: Mandatory Assignment 2
-author: 73 & 85
+author: "Exam number: 73 & 85"
 date: 2024-06-10
 execute:
   echo: false
