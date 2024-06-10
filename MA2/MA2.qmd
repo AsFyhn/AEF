@@ -59,18 +59,6 @@ factors_ff3_monthly = pd.read_sql_query(
   parse_dates={"month"}
 )
 
-<<<<<<< HEAD
-Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. We find a positive correlation between last year’s returns and future returns as in Jegadeesh and Titman (1993). A portfolio that goes long high momentum stocks and short low momentum stocks over the past 6-12 months earns abnormal returns. However, 2-5 months and 13-20 months lagged momentum long/short portfolios earn negative excess returns.
-
-# Exercise 1 and 2:
-We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
-
-We do not expect significant differences between computing momentum as the relative change in prices compared to the relative change in market capitalization. In this assignment, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. Such events affect stock prices without affecting returns. However, when using the market capitalization, events such as dividend payouts, decrease market capitalization without affecting returns. Therefore, there are problems with both types of calculations. Lucklily, both the stock price and market capitalization has been adjusted accordingly in the CRSP dataset. Therefore, we should not face any problems by calculating momentum with either stocks prices or market capitalization.
-
-
-```{python}
-=======
->>>>>>> 3cb3248e7c0da7def986f3ad687f0812b5d67a8a
 #Transforming the crsp_monthly dataset to contain mktcap_lag_12
 mktcap_lag_12 = (crsp_monthly
   .assign(month=lambda x: x["month"]+pd.DateOffset(months=12))
@@ -265,7 +253,7 @@ plot_momentum_portfolios_summary.draw()
 ```
 
 From @fig-capmalphas, we see that the lowest decile generates the lowest alpha and generally a higher momentum means higher alpha. This result is in accordance with Jegadeesh and Titman (1993) and represents an imperfection in the market. In the following, we test if we can exploit this imperfection with a momentum strategy that goes long past winners and short past losers. Specifically, we estimate the alpha and beta of a portfolio that shorts the 1st decile portfolio and goes long the 10th decile portfolio with OLS of the following regression model:
-$$r_{p,t} = \alpha + \beta r_{m,t}+\epsilon$$
+$$r_{p,t} = \alpha + \beta r_{m,t}+\epsilon_t$$
 where $r_{p,t}$ is the excess return of the long/short portfolio, and $r_{m,t}$ is the excess return of the market index. To adjust for autocorrelation we use the Newey and West t-statistic with a lag length of 12 months. The results of the estimation are presented in @tbl-performance.
 
 
@@ -479,24 +467,14 @@ plot_df = pd.concat([plot_df,plot_df.iloc[index-3:index+4].assign(Sample='Zoom')
   facet_wrap("Sample",scales='free') +
   labs(x="$\lambda$", y="RMSE",) +
   scale_y_continuous() +
-<<<<<<< HEAD
   theme(legend_position="none",figure_size=(6,3)) +
-=======
-  theme(legend_position="none",figure_size=(2,2)) +
->>>>>>> 3cb3248e7c0da7def986f3ad687f0812b5d67a8a
   scale_x_log10() +
   annotate("point", x = opt_lambda, y = opt_score, colour = "blue") +
   theme_minimal()
   ).draw()
 ```
 
-<<<<<<< HEAD
-<!-- We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns. -->
-
-In the @fig-coeffientplot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
-=======
 In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
->>>>>>> 3cb3248e7c0da7def986f3ad687f0812b5d67a8a
 We notice a distinct pattern in the estimated coefficients:
 
 - For $k<6$, the coefficient, $\hat{b}_k$, is negative, indicating a negative relationship between past excess returns and future returns. The $\hat{c_k}$ are relatively large. Indicating a short term relationship between volatility (large move in either direction) and excess return in the current period. Any pattern in $\hat{c_k}$ is vanished.
@@ -529,16 +507,7 @@ a['coeff'] = a['coeff'].map({'r_sq':'$\hat{c}_k$','r':'$\hat{b}_k$'})
 cut_func = lambda d: pd.qcut(np.abs(d),q=5,labels=['very low','low','medium','high','very high'])
 a['Abs. Value'] = a.groupby('coeff')['value'].apply(cut_func).values
 
-<<<<<<< HEAD
-```
-
-```{python}
-#| output: true
-#| label: fig-coeffientplot
-#| fig-cap: Estimated coefficients
-=======
 # plot the coefficients \hat{b_k} and \hat{}
->>>>>>> 3cb3248e7c0da7def986f3ad687f0812b5d67a8a
 (
   ggplot(a, 
          aes(x="lag", y="value",fill='Abs. Value')) + 
