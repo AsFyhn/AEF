@@ -161,7 +161,8 @@ In @tbl-coefficientdistribution, we report descriptive statistics on the estimat
 
 Based on model-implied expected excess return vector, and the model-implied covariance matrix, we create a portfolio where the weights are given by:
 $$\omega^* = \arg \: \max_{\Sigma_{i=1}^N w_i=1} \omega'\hat{\mu}^{FF} - \frac{\gamma}{2} \omega' \hat{\Sigma}^{FF} \omega$$
-which has the analytical solution $\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$
+which has the analytical solution 
+$$\omega^* = \frac{1}{\gamma} (\Sigma^{-1}  - \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}\iota \iota'\Sigma^{-1} )\mu + \frac{1}{\iota \Sigma^{-1} \iota} \Sigma^{-1}$$
 
 We create a portfolio with the optimal weights using all available data in the training dataset. The out-of-sample performance is reported in Exercise 3. 
 
