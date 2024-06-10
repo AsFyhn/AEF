@@ -39,7 +39,13 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 tidy_finance = sqlite3.connect(
     database=f"../../data/tidy_finance_python.sqlite"
 )
+```
 
+Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
+
+# Exercise 1 and 2:
+
+```{python}
 #Reading in crsp_monthly and factors_ff3_monthly
 crsp_monthly = (pd.read_sql_query(
     sql="SELECT permno, month, ret, ret_excess, mktcap, mktcap_lag, exchange FROM crsp_monthly",
@@ -52,17 +58,7 @@ factors_ff3_monthly = pd.read_sql_query(
   con=tidy_finance,
   parse_dates={"month"}
 )
-```
 
-Jegadeesh and Titman (1993) documented that a portfolio that goes long high return stocks and short low return stocks over the past 3 to 12 months earns abnormal profits the following year. This phenomenon is known as the medium-term momentum effect. In this assignment, we first investigate this effect by estimating the returns of a long/short momentum portfolio using an ordinary least squares (OLS) regression. Next, we explore the predictions of cross-sectional stock returns using only past returns as predictors. This analysis is conducted through a machine learning framework that employs ridge regression. Instead of the positive correlation between last year’s returns and future returns found in Jegadeesh and Titman (1993), we find a negative correlation. Therefore, we conclude that a portfolio that goes long low return stocks and short high return stocks over the past 12 months earns abnormal profits.
-
-# Exercise 1 and 2:
-We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
-
-We do not expect significant differences between computing momentum as the relative change in prices compared to the relative change in market capitalization. In this assignment, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. Such events affect stock prices without affecting returns. However, when using the market capitalization, events such as dividend payouts, decrease market capitalization without affecting returns. Therefore, there are problems with both types of calculations. Lucklily, both the stock price and market capitalization has been adjusted accordingly in the CRSP dataset. Therefore, we should not face any problems by calculating momentum with either stocks prices or market capitalization.
-
-
-```{python}
 #Transforming the crsp_monthly dataset to contain mktcap_lag_12
 mktcap_lag_12 = (crsp_monthly
   .assign(month=lambda x: x["month"]+pd.DateOffset(months=12))
@@ -79,6 +75,11 @@ data_for_sorts = (crsp_monthly
 #Computing the momentum of stock i for 12-month momentum
 data_for_sorts['Mom_12'] = 100 * (data_for_sorts['mktcap_lag'] - data_for_sorts['mktcap_lag_12']) / data_for_sorts['mktcap_lag_12']
 ```
+
+We load the "tidy_finance_python.sqlite" database and select variables from the tables "crsp_monthly" and "factors_ff3_monthly". Thereafter, we compute the momentum of stock i as described in the assignment.
+
+We do not expect significant differences between computing momentum as the relative change in prices compared to the relative change in market capitalization. In this assignment, we use the market capitalization as opposed to the stock price. The benefit of doing so is that our computations are not affected by events that increase or decrease the number of outstanding stocks, such as stock issuances or buybacks. Such events affect stock prices without affecting returns. However, when using the market capitalization, events such as dividend payouts, decrease market capitalization without affecting returns. Therefore, there are problems with both types of calculations. Lucklily, both the stock price and market capitalization has been adjusted accordingly in the CRSP dataset. Therefore, we should not face any problems by calculating momentum with either stocks prices or market capitalization.
+
 
 We present summary statistics of our dataset in @tbl-summary. The mean of 12-Month momentum is around $20\%$ but the distribution has long tails. Likewise, we see that market cap has a long right tail of its distribution. 
 
@@ -148,9 +149,6 @@ Vw_excess_returns = pd.merge(
 #     )
 #   )).reset_index(drop=True)
 
-```
-
-```{python}
 ##### Calculating the CAPM alpha for each of the ten portfolios
 def lin_reg(x,y):
     """
@@ -177,7 +175,9 @@ CAPM_alphas = (
     )
     .reset_index()
     )
+
 ```
+
 
 ```{python}
 #| output: true
@@ -256,7 +256,12 @@ From @fig-capmalphas, we see that the lowest decile generates the lowest alpha a
 $$r_{p,t} = \alpha + \beta r_{m,i}$$
 where $r_{p,t}$ is the return of the portfolio, and $r_{m,i}$ is the return of the market index. The alpha and beta are estimated with the Newey-West standard errors with a lag length of 12 months. The results of the estimation are presented in @tbl-performance.
 
+
 ```{python}
+#| output: true
+#| label: tbl-performance
+#| tbl-cap: Performance of the momentum strategy
+
 # Naming 1 decile portfolio as low and 10 decile portfolio as high
 Vw_excess_returns['portfolio'] = Vw_excess_returns["Mom_12_decile"].map({1: "low", 10: "high"})
 
@@ -274,12 +279,6 @@ model_fit = (sm.OLS.from_formula(
   )
   .fit(cov_type="HAC", cov_kwds={"maxlags": 12})
 )
-```
-
-```{python}
-#| output: true
-#| label: tbl-performance
-#| tbl-cap: Performance of the momentum strategy
 
 # Format the DataFrame style
 output = (pd.DataFrame(index=['alpha','beta'],
@@ -411,9 +410,23 @@ finder = GridSearchCV(
   verbose=1, # Print messages choose 1 through 3 to get more information
   n_jobs=-1, # Use all cores
 )
+
+# fit the model
+finder.fit(
+  X=exog, 
+  y=endog
+)
+
+# store the best estimator
+best_est = finder.best_estimator_
+
+# store optimal penaly parameter
+opt_lambda = finder.best_params_['alpha']
+opt_score = -finder.best_score_
+
 ```
 
-We aim to estimate a model to investigate how a stock's excess return at time $t$ is influenced by its own past returns and the magnitudes of those returns. The model is specified as
+We now investigate how stocks' excess return at a given time is influenced by its own past returns and the magnitudes of those returns. We do so by estimation the following model:
 $$r_{i,t} = \sum_{k=2}^{61} b_k r_{i,t-k} + \sum_{k=2}^{61} c_k r_{i,t-k}^2$$
 
 The coefficients, $b_k$ represent the linear relationship between the excess return at time $t$ and the excess return from $k$ periods ago. As such, the a positive $b_k$ suggests that higher returns $k$ periods ago are associated with higher returns at time $t$.
@@ -432,25 +445,9 @@ $$\lambda^{opt} = \arg\:\min_{\lambda} MSPE = E\left( \frac{1}{T} \sum^T_{t=1} (
 where $\hat{y}_t(\lambda)$ is the predicted value of the dependent variable at time $t$ for a given $\lambda$ and $y_t$ is the true value of the dependent variable at time $t$.
 To select the optimal hyperparameter $\lambda$, we employ a suitable cross-validation scheme. Specifically, we divide the dataset into $K$ folds and perform cross-validation, calculating the MSPE for each fold over a range of $\lambda$ values. The cross-validation procedure averages the MSPE across all $K$ folds for each $\lambda$. The hyperparameter that results in the lowest average MSPE is then selected as the optimal $λ$. This approach ensures that the selected 
 $\lambda$ generalizes well to unseen data, balancing model complexity and predictive accuracy.
-We divide the dataset into a training set for hyperparameter selection, using cross-validation to average the MSPE across $K$ data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected. Choosing $K$ involves balancing the computational burden with the desire for accurate estimates of model performance. \
-We tune the model over a grid of $\lambda$ that is evenly spread on a logscale from `{python} lambdas.min().round(2)` to `{python} lambdas.max().round(2)` with `{python} datafolds` datafolds. 
+We divide the dataset into a training set for hyperparameter selection, using cross-validation to average the MSPE across $K$ data folds over a range of hyperparameters. The hyperparameter that yields the lowest MSPE is then selected. Choosing $K$ involves balancing the computational burden with the desire for accurate estimates of model performance. 
 
-```{python}
-# fit the model
-finder.fit(
-  X=exog, 
-  y=endog
-)
-
-# store the best estimator
-best_est = finder.best_estimator_
-
-# store optimal penaly parameter
-opt_lambda = finder.best_params_['alpha']
-opt_score = -finder.best_score_
-```
-
-After tuning, we set $\lambda$ to the optimal value (`{python} opt_lambda.round(3)`) found, and estimate the model on the remaining dataset:
+We tune the model over a grid of $\lambda$ that is evenly spread on a logscale from `{python} lambdas.min().round(2)` to `{python} lambdas.max().round(2)` with `{python} datafolds` datafolds. We present the average RMSE across the datafolds for the different values of the hyperparameters in the grid in @fig-tuning. The tuning of the model yields $\lambda=$`{python} opt_lambda.round(2)`. We thus proceed and estimate the model on the remaining dataset:
 
 ```{python}
 #| output: true
@@ -470,15 +467,12 @@ plot_df = pd.concat([plot_df,plot_df.iloc[index-3:index+4].assign(Sample='Zoom')
   facet_wrap("Sample",scales='free') +
   labs(x="$\lambda$", y="RMSE",) +
   scale_y_continuous() +
-  theme(legend_position="none",figure_size=(12,6)) +
+  theme(legend_position="none",figure_size=(2,2)) +
   scale_x_log10() +
   annotate("point", x = opt_lambda, y = opt_score, colour = "blue") +
-  theme(figure_size=(7,3)) +
   theme_minimal()
   ).draw()
 ```
-
-<!-- We notice that the coefficient infront of $r_{i,t-k}^2$ seem to be large for $k = {12, 24, 36, 48}$. The corresponding lagged not squared excess return are negative. Meaning that the excess returns are predicted to be lower when the excess return same month in the previous years were posive. Based on this analysis, one might suggest to short those stocks that in a certain month previous years experienced positive excess returns. -->
 
 In the @fig-coeffient_plot, we observe the coefficients for both the lagged excess returns ($r_{i,t−k}$) and their squared terms ($r^2_{i,t-k}$). \
 We notice a distinct pattern in the estimated coefficients:
@@ -493,6 +487,9 @@ Interpreting these coefficient estimates, we find indications of mean reversion 
 In the medium run (6-12 months), there's evidence suggesting a momentum strategy. Positive excess returns experienced 6-12 months ago seem to influence the stock's performance in period $t$
 
 ```{python}
+#| output: true
+#| label: fig-coeffient_plot
+
 # run the best estimator on the rest of the data
 names = best_est.feature_names_in_
 coefficients = best_est.coef_
@@ -505,17 +502,12 @@ a['lag'] = a['feature'].str.extract('(\d+)').astype(int)
 
 # get which coefficient 
 a['coeff'] = np.where(a['feature'].str.contains('ret_sq'), 'r_sq', 'r')
-a['coeff'] = a['coeff'].map({'r_sq':f'$c_k$','r':f'$b_k$'})
+a['coeff'] = a['coeff'].map({'r_sq':'$\hat{c}_k$','r':'$\hat{b}_k$'})
 # determine the color of the coefficient based on the absolute value
 cut_func = lambda d: pd.qcut(np.abs(d),q=5,labels=['very low','low','medium','high','very high'])
 a['Abs. Value'] = a.groupby('coeff')['value'].apply(cut_func).values
 
-```
-
-```{python}
-#| output: true
-#| label: fig-coeffient_plot
-
+# plot the coefficients \hat{b_k} and \hat{}
 (
   ggplot(a, 
          aes(x="lag", y="value",fill='Abs. Value')) + 
